@@ -1,0 +1,8 @@
+{
+  "plugins": ["office-addins"],
+  "extends": ["plugin:office-addins/recommended"],
+  "rules": {
+    "compat/compat": "off"  // Turns off compatibility warnings (e.g. gap, flex)
+  }
+}
+
