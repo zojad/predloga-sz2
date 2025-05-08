@@ -5,22 +5,25 @@
 
 /* global document, Office, Word */
 
-// This file only wires the UI buttons to the logic already available on window
-window.addEventListener("DOMContentLoaded", () => {
-  const wire = (id, fnName) => {
-    const el = document.getElementById(id);
-    if (el && typeof window[fnName] === "function") {
-      el.addEventListener("click", window[fnName]);
-    }
-  };
+Office.onReady(info => {
+  if (info.host === Office.HostType.Word) {
+    window.addEventListener("DOMContentLoaded", () => {
+      const wire = (id, fnName) => {
+        const el = document.getElementById(id);
+        if (el && typeof window[fnName] === "function") {
+          el.addEventListener("click", window[fnName]);
+        }
+      };
 
-  wire("checkTextButton", "checkDocumentText");
-  wire("acceptChangeButton", "acceptCurrentChange");
-  wire("rejectChangeButton", "rejectCurrentChange");
-  wire("acceptAllButton", "acceptAllChanges");
-  wire("rejectAllButton", "rejectAllChanges");
+      wire("checkTextButton", "checkDocumentText");
+      wire("acceptChangeButton", "acceptCurrentChange");
+      wire("rejectChangeButton", "rejectCurrentChange");
+      wire("acceptAllButton", "acceptAllChanges");
+      wire("rejectAllButton", "rejectAllChanges");
 
-  console.log("Taskpane UI is ready.");
+      console.log("Taskpane UI is ready.");
+    });
+  }
 });
 
 
