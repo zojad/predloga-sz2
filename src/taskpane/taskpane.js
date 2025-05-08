@@ -3,27 +3,25 @@
  * See LICENSE in the project root for license information.
  */
 
-/* global document, Office, Word */
+/* global document, Office */
 
 Office.onReady(info => {
   if (info.host === Office.HostType.Word) {
     window.addEventListener("DOMContentLoaded", () => {
-      const wire = (id, fnName) => {
+      const wire = (id, fn) => {
         const el = document.getElementById(id);
-        if (el && typeof window[fnName] === "function") {
-          el.addEventListener("click", window[fnName]);
+        if (el) {
+          el.addEventListener("click", fn);
         }
       };
 
-      wire("checkTextButton", "checkDocumentText");
-      wire("acceptChangeButton", "acceptCurrentChange");
-      wire("rejectChangeButton", "rejectCurrentChange");
-      wire("acceptAllButton", "acceptAllChanges");
-      wire("rejectAllButton", "rejectAllChanges");
+      wire("checkTextButton", () => console.log("Clicked: Check Text"));
+      wire("acceptChangeButton", () => console.log("Clicked: Accept Current Change"));
+      wire("rejectChangeButton", () => console.log("Clicked: Reject Current Change"));
+      wire("acceptAllButton", () => console.log("Clicked: Accept All Changes"));
+      wire("rejectAllButton", () => console.log("Clicked: Reject All Changes"));
 
-      console.log("Taskpane UI is ready.");
+      console.log("✅ Taskpane UI is ready.");
     });
   }
 });
-
-
