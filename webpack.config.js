@@ -2,7 +2,7 @@ const path = require("path");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
-const urlProd = "https://zojad.github.io/predloga-sz2/docs/"; // 👈 Your GitHub Pages URL
+const urlProd = "https://zojad.github.io/predloga-sz2/docs/";
 
 module.exports = (env, options) => {
   const dev = options.mode === "development";
@@ -10,14 +10,13 @@ module.exports = (env, options) => {
   return {
     devtool: "source-map",
 
-    // 👇 Your entry points (JS only — HTML handled by plugin)
     entry: {
       taskpane: "./src/taskpane/taskpane.js",
       commands: "./src/commands/commands.js",
     },
 
     output: {
-      path: path.resolve(__dirname, "docs"), // 👈 Output to GitHub Pages folder
+      path: path.resolve(__dirname, "docs"),
       filename: "[name].js",
       clean: true,
     },
@@ -57,8 +56,9 @@ module.exports = (env, options) => {
             from: "manifest.xml",
             to: "manifest.xml",
             transform(content) {
-              // Replace localhost with GitHub Pages URL
-              return content.toString().replace(/https:\/\/localhost:3006\//g, urlProd);
+              return content
+                .toString()
+                .replace(/https:\/\/localhost:3006\//g, urlProd);
             },
           },
           {
