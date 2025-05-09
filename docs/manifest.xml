@@ -49,6 +49,8 @@
                   <bt:Image size="32" resid="Icon.32x32"/>
                   <bt:Image size="80" resid="Icon.80x80"/>
                 </Icon>
+
+                <!-- Task Pane Button -->
                 <Control xsi:type="Button" id="TaskpaneButton">
                   <Label resid="TaskpaneButton.Label"/>
                   <Supertip>
@@ -63,6 +65,42 @@
                   <Action xsi:type="ShowTaskpane">
                     <TaskpaneId>ButtonId1</TaskpaneId>
                     <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+
+                <!-- Command Buttons -->
+                <Control xsi:type="Button" id="CheckTextButton">
+                  <Label resid="CheckTextButton.Label"/>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>checkDocumentText</FunctionName>
+                  </Action>
+                </Control>
+
+                <Control xsi:type="Button" id="AcceptOne">
+                  <Label resid="AcceptOne.Label"/>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>acceptCurrentChange</FunctionName>
+                  </Action>
+                </Control>
+
+                <Control xsi:type="Button" id="RejectOne">
+                  <Label resid="RejectOne.Label"/>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>rejectCurrentChange</FunctionName>
+                  </Action>
+                </Control>
+
+                <Control xsi:type="Button" id="AcceptAll">
+                  <Label resid="AcceptAll.Label"/>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>acceptAllChanges</FunctionName>
+                  </Action>
+                </Control>
+
+                <Control xsi:type="Button" id="RejectAll">
+                  <Label resid="RejectAll.Label"/>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>rejectAllChanges</FunctionName>
                   </Action>
                 </Control>
               </Group>
@@ -89,6 +127,11 @@
         <bt:String id="GetStarted.Title" DefaultValue="Welcome to Predloga S/Z"/>
         <bt:String id="CommandsGroup.Label" DefaultValue="Preposition Checker"/>
         <bt:String id="TaskpaneButton.Label" DefaultValue="Show Task Pane"/>
+        <bt:String id="CheckTextButton.Label" DefaultValue="Check S/Z"/>
+        <bt:String id="AcceptOne.Label" DefaultValue="Accept One"/>
+        <bt:String id="RejectOne.Label" DefaultValue="Reject One"/>
+        <bt:String id="AcceptAll.Label" DefaultValue="Accept All"/>
+        <bt:String id="RejectAll.Label" DefaultValue="Reject All"/>
       </bt:ShortStrings>
 
       <bt:LongStrings>
@@ -98,3 +141,4 @@
     </Resources>
   </VersionOverrides>
 </OfficeApp>
+
