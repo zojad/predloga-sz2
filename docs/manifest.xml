@@ -73,7 +73,7 @@
                   <Label resid="CheckTextButton.Label"/>
                   <Supertip>
                     <Title resid="CheckTextButton.Label"/>
-                    <Description resid="CheckTextButton.Tooltip"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
                     <bt:Image size="16" resid="Icon.16x16"/>
@@ -89,7 +89,7 @@
                   <Label resid="AcceptOne.Label"/>
                   <Supertip>
                     <Title resid="AcceptOne.Label"/>
-                    <Description resid="AcceptOne.Tooltip"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
                     <bt:Image size="16" resid="Icon.16x16"/>
@@ -105,7 +105,7 @@
                   <Label resid="RejectOne.Label"/>
                   <Supertip>
                     <Title resid="RejectOne.Label"/>
-                    <Description resid="RejectOne.Tooltip"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
                     <bt:Image size="16" resid="Icon.16x16"/>
@@ -121,7 +121,7 @@
                   <Label resid="AcceptAll.Label"/>
                   <Supertip>
                     <Title resid="AcceptAll.Label"/>
-                    <Description resid="AcceptAll.Tooltip"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
                     <bt:Image size="16" resid="Icon.16x16"/>
@@ -137,7 +137,7 @@
                   <Label resid="RejectAll.Label"/>
                   <Supertip>
                     <Title resid="RejectAll.Label"/>
-                    <Description resid="RejectAll.Tooltip"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
                     <bt:Image size="16" resid="Icon.16x16"/>
@@ -148,6 +148,7 @@
                     <FunctionName>rejectAllChanges</FunctionName>
                   </Action>
                 </Control>
+
               </Group>
             </OfficeTab>
           </ExtensionPoint>
@@ -170,7 +171,6 @@
 
       <bt:ShortStrings>
         <bt:String id="GetStarted.Title" DefaultValue="Welcome to Predloga S/Z"/>
-        <bt:String id="GetStarted.Description" DefaultValue="Click the ribbon button to open the S/Z checking tool."/>
         <bt:String id="CommandsGroup.Label" DefaultValue="Preposition Checker"/>
         <bt:String id="TaskpaneButton.Label" DefaultValue="Show Task Pane"/>
         <bt:String id="CheckTextButton.Label" DefaultValue="Check S/Z"/>
@@ -181,12 +181,8 @@
       </bt:ShortStrings>
 
       <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="Click the ribbon button to open the S/Z checking tool."/>
         <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Check use of Slovene 's' and 'z' prepositions."/>
-        <bt:String id="CheckTextButton.Tooltip" DefaultValue="Run check for preposition errors"/>
-        <bt:String id="AcceptOne.Tooltip" DefaultValue="Accept the currently selected change"/>
-        <bt:String id="RejectOne.Tooltip" DefaultValue="Reject the currently selected change"/>
-        <bt:String id="AcceptAll.Tooltip" DefaultValue="Accept all suggested changes"/>
-        <bt:String id="RejectAll.Tooltip" DefaultValue="Reject all suggested changes"/>
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>
