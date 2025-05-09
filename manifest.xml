@@ -50,24 +50,6 @@
                   <bt:Image size="80" resid="Icon.80x80"/>
                 </Icon>
 
-                <!-- Task Pane Button -->
-                <Control xsi:type="Button" id="TaskpaneButton">
-                  <Label resid="TaskpaneButton.Label"/>
-                  <Supertip>
-                    <Title resid="TaskpaneButton.Label"/>
-                    <Description resid="TaskpaneButton.Tooltip"/>
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
-                  </Icon>
-                  <Action xsi:type="ShowTaskpane">
-                    <TaskpaneId>ButtonId1</TaskpaneId>
-                    <SourceLocation resid="Taskpane.Url"/>
-                  </Action>
-                </Control>
-
                 <!-- Command Buttons -->
                 <Control xsi:type="Button" id="CheckTextButton">
                   <Label resid="CheckTextButton.Label"/>
@@ -172,7 +154,6 @@
       <bt:ShortStrings>
         <bt:String id="GetStarted.Title" DefaultValue="Welcome to Predloga S/Z"/>
         <bt:String id="CommandsGroup.Label" DefaultValue="Preposition Checker"/>
-        <bt:String id="TaskpaneButton.Label" DefaultValue="Show Task Pane"/>
         <bt:String id="CheckTextButton.Label" DefaultValue="Check S/Z"/>
         <bt:String id="AcceptOne.Label" DefaultValue="Accept One"/>
         <bt:String id="RejectOne.Label" DefaultValue="Reject One"/>
@@ -187,5 +168,6 @@
     </Resources>
   </VersionOverrides>
 </OfficeApp>
+
 
 
