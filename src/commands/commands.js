@@ -65,11 +65,18 @@ async function checkDocumentText() {
       const errors = [...sResults.items, ...zResults.items]
         .filter(prep => ['s', 'z'].includes(prep.text.trim().toLowerCase()))
         .map(prep => {
-          if (!prep || !prep.getNextTextRange) return null;
-          return {
-            prepositionRange: prep,
-            nextWordRange: prep.getNextTextRange(Word.TextRangeUnit.word)
-          };
+          if (!prep || typeof prep.getNextTextRange !== "function") return null;
+
+          try {
+            const nextRange = prep.getNextTextRange(Word.TextRangeUnit.word);
+            return {
+              prepositionRange: prep,
+              nextWordRange: nextRange,
+            };
+          } catch (e) {
+            console.warn("Failed to get next text range for:", prep.text);
+            return null;
+          }
         })
         .filter(Boolean);
 
