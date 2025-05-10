@@ -56,7 +56,6 @@ async function checkDocumentText() {
       state.currentIndex = 0;
 
       const searchOptions = { matchCase: false, matchWholeWord: true };
-
       const searchScopes = [
         context.document.body,
         context.document.sections.getFirst().getHeader("Primary"),
@@ -74,7 +73,9 @@ async function checkDocumentText() {
         allResults.push(...sResults.items, ...zResults.items);
       }
 
-      const results = allResults.filter((prep) => ["s", "z"].includes(prep.text.trim().toLowerCase()));
+      const results = allResults.filter((prep) =>
+        ["s", "z"].includes(prep.text.trim().toLowerCase())
+      );
 
       const errors = results.map(prep => {
         try {
@@ -195,4 +196,3 @@ window.acceptAllChanges = acceptAllChanges;
 window.rejectAllChanges = rejectAllChanges;
 window.acceptCurrentChange = acceptCurrentChange;
 window.rejectCurrentChange = rejectCurrentChange;
-
