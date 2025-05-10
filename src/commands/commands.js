@@ -62,18 +62,20 @@ async function checkDocumentText() {
       zResults.load("items");
       await context.sync();
 
-      const errors = [...sResults.items, ...zResults.items]
+      const results = [...sResults.items, ...zResults.items];
+      if (results.length === 0) {
+        console.log("No 's' or 'z' prepositions found.");
+      }
+
+      const errors = results
         .filter(prep => ['s', 'z'].includes(prep.text.trim().toLowerCase()))
         .map(prep => {
-          if (!prep || typeof prep.getNextTextRange !== "function") return null;
-
           try {
-            const nextRange = prep.getNextTextRange(Word.TextRangeUnit.word);
             return {
               prepositionRange: prep,
-              nextWordRange: nextRange,
+              nextWordRange: prep.getNextTextRange(Word.TextRangeUnit.word)
             };
-          } catch (e) {
+          } catch (err) {
             console.warn("Failed to get next text range for:", prep.text);
             return null;
           }
@@ -87,7 +89,8 @@ async function checkDocumentText() {
         .map(({ prepositionRange, nextWordRange }) => {
           const currentPrep = prepositionRange.text.trim().toLowerCase();
           const correctPrep = determineCorrectPreposition(nextWordRange.text.trim());
-          return correctPrep && currentPrep !== correctPrep ? {
+          if (!correctPrep) return null;
+          return currentPrep !== correctPrep ? {
             range: prepositionRange,
             suggestion: correctPrep
           } : null;
@@ -103,7 +106,7 @@ async function checkDocumentText() {
       if (state.errors.length > 0) {
         state.errors[0].range.select();
       } else {
-        context.document.body.insertComment("No preposition errors found.", "start");
+        console.log("No preposition errors found.");
       }
     });
   } catch (error) {
@@ -188,3 +191,4 @@ window.acceptAllChanges = acceptAllChanges;
 window.rejectAllChanges = rejectAllChanges;
 window.acceptCurrentChange = acceptCurrentChange;
 window.rejectCurrentChange = rejectCurrentChange;
+
