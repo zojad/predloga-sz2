@@ -64,10 +64,14 @@ async function checkDocumentText() {
 
       const errors = [...sResults.items, ...zResults.items]
         .filter(prep => ['s', 'z'].includes(prep.text.trim().toLowerCase()))
-        .map(prep => ({
-          prepositionRange: prep,
-          nextWordRange: prep.getNextTextRange(Word.TextRangeUnit.word)
-        }));
+        .map(prep => {
+          if (!prep || !prep.getNextTextRange) return null;
+          return {
+            prepositionRange: prep,
+            nextWordRange: prep.getNextTextRange(Word.TextRangeUnit.word)
+          };
+        })
+        .filter(Boolean);
 
       errors.forEach(e => e.nextWordRange.load("text"));
       await context.sync();
@@ -177,4 +181,3 @@ window.acceptAllChanges = acceptAllChanges;
 window.rejectAllChanges = rejectAllChanges;
 window.acceptCurrentChange = acceptCurrentChange;
 window.rejectCurrentChange = rejectCurrentChange;
-
