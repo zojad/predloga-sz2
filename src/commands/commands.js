@@ -56,6 +56,7 @@ async function checkDocumentText() {
       state.currentIndex = 0;
 
       const searchOptions = { matchCase: false, matchWholeWord: true };
+
       const searchScopes = [
         context.document.body,
         context.document.sections.getFirst().getHeader("Primary"),
@@ -73,34 +74,33 @@ async function checkDocumentText() {
         allResults.push(...sResults.items, ...zResults.items);
       }
 
-      const results = allResults.filter((prep) =>
-        ["s", "z"].includes(prep.text.trim().toLowerCase())
-      );
+      const results = allResults.filter((prep) => ["s", "z"].includes(prep.text.trim().toLowerCase()));
 
-      const errors = results.map(prep => {
+      const errors = [];
+
+      for (const prep of results) {
         try {
-          return {
-            prepositionRange: prep,
-            nextWordRange: prep.getNextTextRange(Word.TextRangeUnit.word)
-          };
+          const afterRange = prep.getRange("After");
+          afterRange.expandTo(Word.TextRangeUnit.word);
+          afterRange.load("text");
+          await context.sync();
+
+          const currentPrep = prep.text.trim().toLowerCase();
+          const nextWord = afterRange.text.trim();
+          const correctPrep = determineCorrectPreposition(nextWord);
+
+          if (correctPrep && currentPrep !== correctPrep) {
+            errors.push({
+              range: prep,
+              suggestion: correctPrep
+            });
+          }
         } catch (err) {
-          console.warn("Failed to get next text range for:", prep.text);
-          return null;
+          console.warn("Failed to get following word for:", prep.text, err);
         }
-      }).filter(Boolean);
+      }
 
-      errors.forEach(e => e.nextWordRange.load("text"));
-      await context.sync();
-
-      state.errors = errors.map(({ prepositionRange, nextWordRange }) => {
-        const currentPrep = prepositionRange.text.trim().toLowerCase();
-        const correctPrep = determineCorrectPreposition(nextWordRange.text.trim());
-        if (!correctPrep) return null;
-        return currentPrep !== correctPrep ? {
-          range: prepositionRange,
-          suggestion: correctPrep
-        } : null;
-      }).filter(Boolean);
+      state.errors = errors;
 
       state.errors.forEach(err => {
         err.range.font.highlightColor = "Yellow";

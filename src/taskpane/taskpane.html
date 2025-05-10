@@ -5,55 +5,55 @@
 <!DOCTYPE html>
 <html lang="sl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://appsforoffice.microsoft.com https://res-1.cdn.office.net;">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https://appsforoffice.microsoft.com https://res-1.cdn.office.net;">
   <title>Predloga S/Z</title>
 
-  <!-- Office.js -->
-  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js" defer></script>
+  <!-- Office.js first -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" defer></script>
+  <!-- Preposition checker logic -->
+  <script src="prepositionChecker.js" defer></script>
 
   <!-- Fluent UI styles -->
-  <link rel="stylesheet" href="https://res-1.cdn.office.net/files/fabric-cdn-prod_20230815.002/office-ui-fabric-core/11.1.0/css/fabric.min.css" />
+  <link rel="stylesheet"
+        href="https://res-1.cdn.office.net/files/fabric-cdn-prod_20230815.002/office-ui-fabric-core/11.1.0/css/fabric.min.css"/>
 
-  <!-- Custom styles -->
-  <link rel="stylesheet" href="taskpane.css" />
+  <!-- Your custom styles -->
+  <link rel="stylesheet" href="taskpane.css"/>
 </head>
-
 <body class="ms-font-m ms-welcome ms-Fabric">
   <header class="ms-welcome__header ms-bgColor-neutralLighter">
     <h1 class="ms-font-su">Predloga S/Z</h1>
   </header>
 
   <main id="app-body" class="ms-welcome__main">
-    <h2 class="ms-font-xl">Preveri rabo predlogov "s" in "z"</h2>
+    <h2 class="ms-font-xl">Preveri rabo predlogov “s” in “z”</h2>
     <p class="ms-font-m">Orodje preveri, ali je pravilna raba predlogov s in z.</p>
 
     <div class="button-container">
       <button class="ms-Button ms-Button--primary" id="checkTextButton">
         <span class="ms-Button-label">Preveri besedilo</span>
       </button>
-
       <button class="ms-Button ms-Button--action" id="acceptChangeButton">
         <span class="ms-Button-label">Sprejmi</span>
       </button>
-
       <button class="ms-Button ms-Button--destructive" id="rejectChangeButton">
         <span class="ms-Button-label">Zavrni</span>
       </button>
-
       <button class="ms-Button ms-Button--success" id="acceptAllButton">
         <span class="ms-Button-label">Sprejmi vse</span>
       </button>
-
       <button class="ms-Button ms-Button--destructive" id="rejectAllButton">
         <span class="ms-Button-label">Zavrni vse</span>
       </button>
     </div>
   </main>
 
-  <!-- Only include taskpane.js here -->
+  <!-- If you have additional UI logic in taskpane.js, keep it,
+       but it should just wire up the buttons to the global functions. -->
   <script src="taskpane.js" defer></script>
 </body>
 </html>
