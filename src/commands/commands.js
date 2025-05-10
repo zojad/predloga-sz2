@@ -1,46 +1,33 @@
-/* eslint-disable prettier/prettier */
 /* global Office, Word */
 
-// State management
+// State
 const state = {
   errors: [],
   currentIndex: 0
 };
 
+// Office initialization
 Office.onReady((info) => {
   if (info.host === Office.HostType.Word) {
-    try {
-      Office.actions.associate("checkDocumentText", checkDocumentText);
-      Office.actions.associate("acceptAllChanges", acceptAllChanges);
-      Office.actions.associate("rejectAllChanges", rejectAllChanges);
-      Office.actions.associate("acceptCurrentChange", acceptCurrentChange);
-      Office.actions.associate("rejectCurrentChange", rejectCurrentChange);
-    } catch (error) {
-      console.error("Function registration failed:", error);
-    }
+    Office.actions.associate("checkDocumentText", checkDocumentText);
+    Office.actions.associate("acceptCurrentChange", acceptCurrentChange);
+    Office.actions.associate("rejectCurrentChange", rejectCurrentChange);
+    Office.actions.associate("acceptAllChanges", acceptAllChanges);
+    Office.actions.associate("rejectAllChanges", rejectAllChanges);
   }
 });
 
-// Updated logic with numbers
+// Determines correct preposition (supports letters + numbers)
 function determineCorrectPreposition(word) {
   if (!word) return null;
 
-  const unvoicedConsonants = new Set(['c', 'č', 'f', 'h', 'k', 'p', 's', 'š', 't']);
-  const digitPronunciations = {
-    '1': 'e',  // ena
-    '2': 'd',  // dva
-    '3': 't',  // tri
-    '4': 'š',  // štiri
-    '5': 'p',  // pet
-    '6': 'š',  // šest
-    '7': 's',  // sedem
-    '8': 'o',  // osem
-    '9': 'd',  // devet
-    '0': 'n'   // nič
+  const unvoiced = new Set(['c', 'č', 'f', 'h', 'k', 'p', 's', 'š', 't']);
+  const digitPronunciation = {
+    '1': 'e', '2': 'd', '3': 't', '4': 'š', '5': 'p',
+    '6': 'š', '7': 's', '8': 'o', '9': 'd', '0': 'n'
   };
 
-  let firstChar = "";
-
+  let firstChar = '';
   for (const char of word) {
     if (char.match(/[a-zA-ZčČšŠžŽ0-9]/)) {
       firstChar = char.toLowerCase();
@@ -51,17 +38,17 @@ function determineCorrectPreposition(word) {
   if (!firstChar) return null;
 
   if (/\d/.test(firstChar)) {
-    const pronunciationStart = digitPronunciations[firstChar];
-    return unvoicedConsonants.has(pronunciationStart) ? "s" : "z";
+    const sound = digitPronunciation[firstChar];
+    return unvoiced.has(sound) ? 's' : 'z';
   }
 
-  return unvoicedConsonants.has(firstChar) ? "s" : "z";
+  return unvoiced.has(firstChar) ? 's' : 'z';
 }
 
+// Check document for errors
 async function checkDocumentText() {
   try {
     await Word.run(async (context) => {
-      // Clear previous highlights
       state.errors.forEach(err => {
         err.range.font.highlightColor = null;
       });
@@ -75,28 +62,24 @@ async function checkDocumentText() {
       zResults.load("items");
       await context.sync();
 
-      const errors = [...sResults.items, ...zResults.items]
+      const errorCandidates = [...sResults.items, ...zResults.items]
         .filter(prep => ['s', 'z'].includes(prep.text.trim().toLowerCase()))
-        .map(prep => ({
-          prepositionRange: prep,
-          nextWordRange: prep.getNextTextRange("Word")
-        }))
-        .filter(pair => {
-          pair.nextWordRange.load("text");
-          return true;
+        .map(prep => {
+          const next = prep.getNextTextRange("Word");
+          if (next) next.load("text");
+          return { prepositionRange: prep, nextWordRange: next };
         });
 
       await context.sync();
 
-      state.errors = errors
+      state.errors = errorCandidates
         .map(({ prepositionRange, nextWordRange }) => {
           const currentPrep = prepositionRange.text.trim().toLowerCase();
-          const correctPrep = determineCorrectPreposition(nextWordRange.text.trim());
-          return correctPrep && currentPrep !== correctPrep ? {
-            range: prepositionRange,
-            suggestion: correctPrep,
-            following: nextWordRange.text.trim()
-          } : null;
+          const nextWord = nextWordRange?.text?.trim?.();
+          const correctPrep = determineCorrectPreposition(nextWord);
+          return correctPrep && currentPrep !== correctPrep
+            ? { range: prepositionRange, suggestion: correctPrep }
+            : null;
         })
         .filter(Boolean);
 
@@ -117,9 +100,9 @@ async function checkDocumentText() {
   }
 }
 
+// Accept one
 async function acceptCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
-
   try {
     await Word.run(async (context) => {
       const err = state.errors[state.currentIndex];
@@ -127,7 +110,6 @@ async function acceptCurrentChange() {
       err.range.font.highlightColor = null;
       await context.sync();
       state.currentIndex++;
-
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
@@ -137,16 +119,15 @@ async function acceptCurrentChange() {
   }
 }
 
+// Reject one
 async function rejectCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
-
   try {
     await Word.run(async (context) => {
       const err = state.errors[state.currentIndex];
       err.range.font.highlightColor = null;
       await context.sync();
       state.currentIndex++;
-
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
@@ -156,9 +137,9 @@ async function rejectCurrentChange() {
   }
 }
 
+// Accept all
 async function acceptAllChanges() {
   if (state.errors.length === 0) return;
-
   try {
     await Word.run(async (context) => {
       for (const err of state.errors) {
@@ -173,9 +154,9 @@ async function acceptAllChanges() {
   }
 }
 
+// Reject all
 async function rejectAllChanges() {
   if (state.errors.length === 0) return;
-
   try {
     await Word.run(async (context) => {
       for (const err of state.errors) {
@@ -189,10 +170,10 @@ async function rejectAllChanges() {
   }
 }
 
-// For manual button wiring via HTML (if needed)
+// For taskpane testing if needed
 window.checkDocumentText = checkDocumentText;
-window.acceptAllChanges = acceptAllChanges;
-window.rejectAllChanges = rejectAllChanges;
 window.acceptCurrentChange = acceptCurrentChange;
 window.rejectCurrentChange = rejectCurrentChange;
+window.acceptAllChanges = acceptAllChanges;
+window.rejectAllChanges = rejectAllChanges;
 
