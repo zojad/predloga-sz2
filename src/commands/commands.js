@@ -56,46 +56,50 @@ async function checkDocumentText() {
       state.currentIndex = 0;
 
       const searchOptions = { matchCase: false, matchWholeWord: true };
-      const sResults = context.document.body.search("s", searchOptions);
-      const zResults = context.document.body.search("z", searchOptions);
-      sResults.load("items");
-      zResults.load("items");
-      await context.sync();
 
-      const results = [...sResults.items, ...zResults.items];
-      if (results.length === 0) {
-        console.log("No 's' or 'z' prepositions found.");
+      const searchScopes = [
+        context.document.body,
+        context.document.sections.getFirst().getHeader("Primary"),
+        context.document.sections.getFirst().getFooter("Primary")
+      ];
+
+      let allResults = [];
+
+      for (const scope of searchScopes) {
+        const sResults = scope.search("s", searchOptions);
+        const zResults = scope.search("z", searchOptions);
+        sResults.load("items");
+        zResults.load("items");
+        await context.sync();
+        allResults.push(...sResults.items, ...zResults.items);
       }
 
-      const errors = results
-        .filter(prep => ['s', 'z'].includes(prep.text.trim().toLowerCase()))
-        .map(prep => {
-          try {
-            return {
-              prepositionRange: prep,
-              nextWordRange: prep.getNextTextRange(Word.TextRangeUnit.word)
-            };
-          } catch (err) {
-            console.warn("Failed to get next text range for:", prep.text);
-            return null;
-          }
-        })
-        .filter(Boolean);
+      const results = allResults.filter((prep) => ["s", "z"].includes(prep.text.trim().toLowerCase()));
+
+      const errors = results.map(prep => {
+        try {
+          return {
+            prepositionRange: prep,
+            nextWordRange: prep.getNextTextRange(Word.TextRangeUnit.word)
+          };
+        } catch (err) {
+          console.warn("Failed to get next text range for:", prep.text);
+          return null;
+        }
+      }).filter(Boolean);
 
       errors.forEach(e => e.nextWordRange.load("text"));
       await context.sync();
 
-      state.errors = errors
-        .map(({ prepositionRange, nextWordRange }) => {
-          const currentPrep = prepositionRange.text.trim().toLowerCase();
-          const correctPrep = determineCorrectPreposition(nextWordRange.text.trim());
-          if (!correctPrep) return null;
-          return currentPrep !== correctPrep ? {
-            range: prepositionRange,
-            suggestion: correctPrep
-          } : null;
-        })
-        .filter(Boolean);
+      state.errors = errors.map(({ prepositionRange, nextWordRange }) => {
+        const currentPrep = prepositionRange.text.trim().toLowerCase();
+        const correctPrep = determineCorrectPreposition(nextWordRange.text.trim());
+        if (!correctPrep) return null;
+        return currentPrep !== correctPrep ? {
+          range: prepositionRange,
+          suggestion: correctPrep
+        } : null;
+      }).filter(Boolean);
 
       state.errors.forEach(err => {
         err.range.font.highlightColor = "Yellow";
