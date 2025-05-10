@@ -7,21 +7,22 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Predloga S/Z</title>
   <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self' https://appsforoffice.microsoft.com https://res-1.cdn.office.net;">
-  <title>Predloga S/Z</title>
 
-  <!-- Office.js first -->
+  <!-- 1) Office.js first -->
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" defer></script>
-  <!-- Preposition checker logic -->
-  <script src="prepositionChecker.js" defer></script>
+  <!-- 2) Core logic -->
+  <script src="commands.js" defer></script>
+  <!-- 3) Your UI-wiring code -->
+  <script src="taskpane.js" defer></script>
 
   <!-- Fluent UI styles -->
   <link rel="stylesheet"
         href="https://res-1.cdn.office.net/files/fabric-cdn-prod_20230815.002/office-ui-fabric-core/11.1.0/css/fabric.min.css"/>
-
-  <!-- Your custom styles -->
+  <!-- Your custom CSS -->
   <link rel="stylesheet" href="taskpane.css"/>
 </head>
 <body class="ms-font-m ms-welcome ms-Fabric">
@@ -51,9 +52,5 @@
       </button>
     </div>
   </main>
-
-  <!-- If you have additional UI logic in taskpane.js, keep it,
-       but it should just wire up the buttons to the global functions. -->
-  <script src="taskpane.js" defer></script>
 </body>
 </html>
