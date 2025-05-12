@@ -7,21 +7,26 @@
 
 Office.onReady(info => {
   if (info.host === Office.HostType.Word) {
+    // Wait for the taskpane DOM to finish loading
     window.addEventListener("DOMContentLoaded", () => {
-      const wire = (id, fn) => {
+      const wire = (id, actionName) => {
         const el = document.getElementById(id);
         if (el) {
-          el.addEventListener("click", fn);
+          el.addEventListener("click", () => {
+            // Invoke the registered command
+            Office.actions.executeFunction(actionName)
+              .catch(err => console.error(`Error running ${actionName}:`, err));
+          });
         }
       };
 
-      wire("checkTextButton", () => console.log("Clicked: Check Text"));
-      wire("acceptChangeButton", () => console.log("Clicked: Accept Current Change"));
-      wire("rejectChangeButton", () => console.log("Clicked: Reject Current Change"));
-      wire("acceptAllButton", () => console.log("Clicked: Accept All Changes"));
-      wire("rejectAllButton", () => console.log("Clicked: Reject All Changes"));
+      wire("checkTextButton",       "checkDocumentText");
+      wire("acceptChangeButton",    "acceptCurrentChange");
+      wire("rejectChangeButton",    "rejectCurrentChange");
+      wire("acceptAllButton",       "acceptAllChanges");
+      wire("rejectAllButton",       "rejectAllChanges");
 
-      console.log("✅ Taskpane UI is ready.");
+      console.log("✅ Taskpane UI is ready and wired to Office.actions.");
     });
   }
 });
