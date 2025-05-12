@@ -19,46 +19,43 @@ function showNotification(id, options) {
   }
 }
 
-// Only register our ribbon commands once
-if (!window._SZ_functionsRegistered) {
-  window._SZ_functionsRegistered = true;
-
-  Office.onReady((info) => {
-    if (info.host === Office.HostType.Word) {
-      try {
-        Office.actions.associate("checkDocumentText",    checkDocumentText);
-        Office.actions.associate("acceptAllChanges",     acceptAllChanges);
-        Office.actions.associate("rejectAllChanges",     rejectAllChanges);
-        Office.actions.associate("acceptCurrentChange",  acceptCurrentChange);
-        Office.actions.associate("rejectCurrentChange",  rejectCurrentChange);
-      } catch (error) {
-        console.error("Function registration failed:", error);
-        showNotification("regError", {
-          type: "errorMessage",
-          message: "Add-in initialization failed. Please reload.",
-          persistent: false
-        });
-      }
-    }
-  });
-}
-
 // State for errors and control flow
 const state = {
-  errors: [], currentIndex: 0, isChecking: false
+  errors: [],
+  currentIndex: 0,
+  isChecking: false
 };
 
 // Highlight color for detected errors: light pink
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID = "noErrors";
 
+Office.onReady((info) => {
+  if (info.host === Office.HostType.Word) {
+    try {
+      Office.actions.associate("checkDocumentText", checkDocumentText);
+      Office.actions.associate("acceptAllChanges", acceptAllChanges);
+      Office.actions.associate("rejectAllChanges", rejectAllChanges);
+      Office.actions.associate("acceptCurrentChange", acceptCurrentChange);
+      Office.actions.associate("rejectCurrentChange", rejectCurrentChange);
+    } catch (error) {
+      console.error("Function registration failed:", error);
+      showNotification("regError", {
+        type: "errorMessage",
+        message: "Add-in initialization failed. Please reload.",
+        persistent: false
+      });
+    }
+  }
+});
+
 // Map a raw word (letter or digit start) to the correct 's' or 'z'
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
+  // Normalize accents
   const word = rawWord.normalize("NFC");
-  const match = word.match(/[\p{L}0-9]/u);
-  if (!match) return null;
-  const firstChar = match[0].toLowerCase();
+  // Just take the first character
+  const firstChar = word.charAt(0).toLowerCase();
 
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
   const numPron = {
@@ -66,10 +63,14 @@ function determineCorrectPreposition(rawWord) {
     '6':'š','7':'s','8':'o','9':'d','0':'n'
   };
 
-  if (/\d/.test(firstChar)) {
-    return unvoiced.has(numPron[firstChar]) ? "s" : "z";
+  // digit?
+  if (firstChar >= '0' && firstChar <= '9') {
+    const pron = numPron[firstChar];
+    return unvoiced.has(pron) ? 's' : 'z';
   }
-  return unvoiced.has(firstChar) ? "s" : "z";
+
+  // letter
+  return unvoiced.has(firstChar) ? 's' : 'z';
 }
 
 // Main scan: highlight mismatches, or notify if none
@@ -85,33 +86,21 @@ async function checkDocumentText() {
       state.errors = [];
       state.currentIndex = 0;
 
-      const opts = { matchCase: false, matchWholeWord: true };
+      const searchOptions = { matchCase: false, matchWholeWord: true };
       let allRanges = [];
 
+      // helper: find standalone 's' or 'z'
       async function addSearchResults(scope) {
-        const res = scope.search("\\b[sz]\\b", opts);
+        const res = scope.search("\\b[sz]\\b", searchOptions);
         res.load("items");
         await context.sync();
         allRanges.push(...res.items);
       }
 
+      // Only scan the body (skip headers/footers)
       await addSearchResults(context.document.body);
 
-      const secs = context.document.sections;
-      secs.load("items"); await context.sync();
-      for (const s of secs.items) {
-        await addSearchResults(s.getHeader("Primary"));
-        await addSearchResults(s.getFooter("Primary"));
-      }
-
-      const ccs = context.document.contentControls;
-      ccs.load("items"); await context.sync();
-      for (const cc of ccs.items) await addSearchResults(cc);
-
-      const tables = context.document.body.tables;
-      tables.load("items"); await context.sync();
-      for (const t of tables.items) await addSearchResults(t.getRange());
-
+      // Filter exactly "s"/"z"
       const candidates = allRanges.filter(r =>
         ["s","z"].includes(r.text.trim().toLowerCase())
       );
@@ -134,21 +123,25 @@ async function checkDocumentText() {
       }
 
       state.errors = errors;
+
       if (errors.length === 0) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
-          message: "Ni najdenih napak.",
+          message: "🎉 Ni najdenih napak.",
           icon: "Icon.80x80",
           persistent: false
         });
         return;
       }
 
+      // Highlight errors and select the first one
       for (const e of errors) {
         e.range.font.highlightColor = HIGHLIGHT_COLOR;
       }
       await context.sync();
+
       errors[0].range.select();
+      await context.sync();
     });
   } catch (e) {
     console.error("checkDocumentText failed:", e);
@@ -175,6 +168,7 @@ async function acceptCurrentChange() {
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
+        await context.sync();
       }
     });
   } catch (e) {
@@ -198,6 +192,7 @@ async function rejectCurrentChange() {
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
+        await context.sync();
       }
     });
   } catch (e) {
@@ -251,9 +246,9 @@ async function rejectAllChanges() {
   }
 }
 
-// Expose to ribbon/UI (these are just the callbacks Office.actions.invokeFunction will call)
-window.checkDocumentText    = checkDocumentText;
-window.acceptCurrentChange  = acceptCurrentChange;
-window.rejectCurrentChange  = rejectCurrentChange;
-window.acceptAllChanges     = acceptAllChanges;
-window.rejectAllChanges     = rejectAllChanges;
+// Expose to ribbon/UI
+window.checkDocumentText   = checkDocumentText;
+window.acceptCurrentChange = acceptCurrentChange;
+window.rejectCurrentChange = rejectCurrentChange;
+window.acceptAllChanges    = acceptAllChanges;
+window.rejectAllChanges    = rejectAllChanges;
