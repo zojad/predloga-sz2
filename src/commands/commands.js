@@ -19,42 +19,43 @@ function showNotification(id, options) {
   }
 }
 
+// Only register our ribbon commands once
+if (!window._SZ_functionsRegistered) {
+  window._SZ_functionsRegistered = true;
+
+  Office.onReady((info) => {
+    if (info.host === Office.HostType.Word) {
+      try {
+        Office.actions.associate("checkDocumentText",    checkDocumentText);
+        Office.actions.associate("acceptAllChanges",     acceptAllChanges);
+        Office.actions.associate("rejectAllChanges",     rejectAllChanges);
+        Office.actions.associate("acceptCurrentChange",  acceptCurrentChange);
+        Office.actions.associate("rejectCurrentChange",  rejectCurrentChange);
+      } catch (error) {
+        console.error("Function registration failed:", error);
+        showNotification("regError", {
+          type: "errorMessage",
+          message: "Add-in initialization failed. Please reload.",
+          persistent: false
+        });
+      }
+    }
+  });
+}
+
 // State for errors and control flow
 const state = {
-  errors: [],
-  currentIndex: 0,
-  isChecking: false
+  errors: [], currentIndex: 0, isChecking: false
 };
 
 // Highlight color for detected errors: light pink
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID = "noErrors";
 
-Office.onReady((info) => {
-  if (info.host === Office.HostType.Word) {
-    try {
-      Office.actions.associate("checkDocumentText", checkDocumentText);
-      Office.actions.associate("acceptAllChanges", acceptAllChanges);
-      Office.actions.associate("rejectAllChanges", rejectAllChanges);
-      Office.actions.associate("acceptCurrentChange", acceptCurrentChange);
-      Office.actions.associate("rejectCurrentChange", rejectCurrentChange);
-    } catch (error) {
-      console.error("Function registration failed:", error);
-      showNotification("regError", {
-        type: "errorMessage",
-        message: "Add-in initialization failed. Please reload.",
-        persistent: false
-      });
-    }
-  }
-});
-
 // Map a raw word (letter or digit start) to the correct 's' or 'z'
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
-  // Normalize to NFC so É vs É are consistent
   const word = rawWord.normalize("NFC");
-  // Find first letter or digit via Unicode property escape
   const match = word.match(/[\p{L}0-9]/u);
   if (!match) return null;
   const firstChar = match[0].toLowerCase();
@@ -66,8 +67,7 @@ function determineCorrectPreposition(rawWord) {
   };
 
   if (/\d/.test(firstChar)) {
-    const pron = numPron[firstChar];
-    return unvoiced.has(pron) ? "s" : "z";
+    return unvoiced.has(numPron[firstChar]) ? "s" : "z";
   }
   return unvoiced.has(firstChar) ? "s" : "z";
 }
@@ -85,18 +85,16 @@ async function checkDocumentText() {
       state.errors = [];
       state.currentIndex = 0;
 
-      const searchOptions = { matchCase: false, matchWholeWord: true };
+      const opts = { matchCase: false, matchWholeWord: true };
       let allRanges = [];
 
-      // helper: find standalone 's' or 'z'
       async function addSearchResults(scope) {
-        const res = scope.search("\\b[sz]\\b", searchOptions);
+        const res = scope.search("\\b[sz]\\b", opts);
         res.load("items");
         await context.sync();
         allRanges.push(...res.items);
       }
 
-      // Body, headers, footers, content controls, tables
       await addSearchResults(context.document.body);
 
       const secs = context.document.sections;
@@ -108,17 +106,12 @@ async function checkDocumentText() {
 
       const ccs = context.document.contentControls;
       ccs.load("items"); await context.sync();
-      for (const cc of ccs.items) {
-        await addSearchResults(cc);
-      }
+      for (const cc of ccs.items) await addSearchResults(cc);
 
       const tables = context.document.body.tables;
       tables.load("items"); await context.sync();
-      for (const t of tables.items) {
-        await addSearchResults(t.getRange());
-      }
+      for (const t of tables.items) await addSearchResults(t.getRange());
 
-      // Filter exactly “s”/“z”
       const candidates = allRanges.filter(r =>
         ["s","z"].includes(r.text.trim().toLowerCase())
       );
@@ -141,7 +134,6 @@ async function checkDocumentText() {
       }
 
       state.errors = errors;
-
       if (errors.length === 0) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
@@ -152,7 +144,6 @@ async function checkDocumentText() {
         return;
       }
 
-      // Highlight our errors and select the first
       for (const e of errors) {
         e.range.font.highlightColor = HIGHLIGHT_COLOR;
       }
@@ -177,14 +168,10 @@ async function acceptCurrentChange() {
   try {
     await Word.run(async (context) => {
       const err = state.errors[state.currentIndex];
-      try {
-        err.range.insertText(err.suggestion, Word.InsertLocation.replace);
-        err.range.font.highlightColor = null;
-      } catch {
-        await checkDocumentText(); // resync
-        return;
-      }
+      err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+      err.range.font.highlightColor = null;
       await context.sync();
+
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
@@ -207,6 +194,7 @@ async function rejectCurrentChange() {
       const err = state.errors[state.currentIndex];
       err.range.font.highlightColor = null;
       await context.sync();
+
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
@@ -263,9 +251,9 @@ async function rejectAllChanges() {
   }
 }
 
-// Expose to ribbon/UI
-window.checkDocumentText   = checkDocumentText;
-window.acceptCurrentChange = acceptCurrentChange;
-window.rejectCurrentChange = rejectCurrentChange;
-window.acceptAllChanges    = acceptAllChanges;
-window.rejectAllChanges    = rejectAllChanges;
+// Expose to ribbon/UI (these are just the callbacks Office.actions.invokeFunction will call)
+window.checkDocumentText    = checkDocumentText;
+window.acceptCurrentChange  = acceptCurrentChange;
+window.rejectCurrentChange  = rejectCurrentChange;
+window.acceptAllChanges     = acceptAllChanges;
+window.rejectAllChanges     = rejectAllChanges;
