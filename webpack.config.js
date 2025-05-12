@@ -39,7 +39,8 @@ module.exports = (env, options) => {
       new HtmlWebpackPlugin({
         filename: "taskpane.html",
         template: "./src/taskpane/taskpane.html",
-        chunks: ["taskpane"],
+        // include both commands and taskpane bundles in the pane
+        chunks: ["commands", "taskpane"],
       }),
       new HtmlWebpackPlugin({
         filename: "commands.html",
