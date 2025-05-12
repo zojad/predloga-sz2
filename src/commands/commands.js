@@ -1,5 +1,24 @@
 /* global Office, Word */
 
+// Helper wrappers for NotificationMessages (guard against undefined)
+function clearNotification(id) {
+  if (
+    Office.NotificationMessages &&
+    typeof Office.NotificationMessages.deleteAsync === "function"
+  ) {
+    Office.NotificationMessages.deleteAsync(id);
+  }
+}
+
+function showNotification(id, options) {
+  if (
+    Office.NotificationMessages &&
+    typeof Office.NotificationMessages.addAsync === "function"
+  ) {
+    Office.NotificationMessages.addAsync(id, options);
+  }
+}
+
 // State for errors and control flow
 const state = {
   errors: [],
@@ -21,7 +40,7 @@ Office.onReady((info) => {
       Office.actions.associate("rejectCurrentChange", rejectCurrentChange);
     } catch (error) {
       console.error("Function registration failed:", error);
-      Office.NotificationMessages.addAsync("regError", {
+      showNotification("regError", {
         type: "errorMessage",
         message: "Add-in initialization failed. Please reload.",
         persistent: false
@@ -57,7 +76,7 @@ function determineCorrectPreposition(rawWord) {
 async function checkDocumentText() {
   if (state.isChecking) return;
   state.isChecking = true;
-  Office.NotificationMessages.deleteAsync(NOTIF_ID);
+  clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async (context) => {
@@ -79,18 +98,25 @@ async function checkDocumentText() {
 
       // Body, headers, footers, content controls, tables
       await addSearchResults(context.document.body);
+
       const secs = context.document.sections;
       secs.load("items"); await context.sync();
       for (const s of secs.items) {
         await addSearchResults(s.getHeader("Primary"));
         await addSearchResults(s.getFooter("Primary"));
       }
+
       const ccs = context.document.contentControls;
       ccs.load("items"); await context.sync();
-      for (const cc of ccs.items) await addSearchResults(cc);
+      for (const cc of ccs.items) {
+        await addSearchResults(cc);
+      }
+
       const tables = context.document.body.tables;
       tables.load("items"); await context.sync();
-      for (const t of tables.items) await addSearchResults(t.getRange());
+      for (const t of tables.items) {
+        await addSearchResults(t.getRange());
+      }
 
       // Filter exactly “s”/“z”
       const candidates = allRanges.filter(r =>
@@ -109,14 +135,17 @@ async function checkDocumentText() {
 
         const curr = prep.text.trim().toLowerCase();
         const corr = determineCorrectPreposition(nextWord);
-        if (corr && curr !== corr) errors.push({range: prep, suggestion: corr});
+        if (corr && curr !== corr) {
+          errors.push({ range: prep, suggestion: corr });
+        }
       }
 
       state.errors = errors;
+
       if (errors.length === 0) {
-        Office.NotificationMessages.addAsync(NOTIF_ID, {
+        showNotification(NOTIF_ID, {
           type: "informationalMessage",
-          message: "🎉 No mismatched ‘s’/‘z’ prepositions found.",
+          message: "Ni najdenih napak.",
           icon: "Icon.80x80",
           persistent: false
         });
@@ -124,13 +153,15 @@ async function checkDocumentText() {
       }
 
       // Highlight our errors and select the first
-      for (const e of errors) e.range.font.highlightColor = HIGHLIGHT_COLOR;
+      for (const e of errors) {
+        e.range.font.highlightColor = HIGHLIGHT_COLOR;
+      }
       await context.sync();
       errors[0].range.select();
     });
   } catch (e) {
     console.error("checkDocumentText failed:", e);
-    Office.NotificationMessages.addAsync("checkError", {
+    showNotification("checkError", {
       type: "errorMessage",
       message: "Preposition check failed. Please try again.",
       persistent: false
@@ -161,7 +192,7 @@ async function acceptCurrentChange() {
     });
   } catch (e) {
     console.error("acceptCurrentChange failed:", e);
-    Office.NotificationMessages.addAsync("acceptError", {
+    showNotification("acceptError", {
       type: "errorMessage",
       message: "Failed to apply change. Please re-run the check.",
       persistent: false
@@ -183,7 +214,7 @@ async function rejectCurrentChange() {
     });
   } catch (e) {
     console.error("rejectCurrentChange failed:", e);
-    Office.NotificationMessages.addAsync("rejectError", {
+    showNotification("rejectError", {
       type: "errorMessage",
       message: "Failed to reject change. Please re-run the check.",
       persistent: false
@@ -204,7 +235,7 @@ async function acceptAllChanges() {
     });
   } catch (e) {
     console.error("acceptAllChanges failed:", e);
-    Office.NotificationMessages.addAsync("acceptAllError", {
+    showNotification("acceptAllError", {
       type: "errorMessage",
       message: "Failed to apply all changes. Please try again.",
       persistent: false
@@ -224,7 +255,7 @@ async function rejectAllChanges() {
     });
   } catch (e) {
     console.error("rejectAllChanges failed:", e);
-    Office.NotificationMessages.addAsync("rejectAllError", {
+    showNotification("rejectAllError", {
       type: "errorMessage",
       message: "Failed to clear changes. Please try again.",
       persistent: false
