@@ -1,8 +1,8 @@
-const path = require("path");
+
+const path              = require("path");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
-// Change this to your production deployment URL
 const urlProd = "https://zojad.github.io/predloga-sz2/docs/";
 
 module.exports = (env, options) => {
@@ -37,16 +37,20 @@ module.exports = (env, options) => {
     },
 
     plugins: [
+      // <-- taskpane.html only gets the taskpane bundle
       new HtmlWebpackPlugin({
         filename: "taskpane.html",
         template: "./src/taskpane/taskpane.html",
-        chunks: ["taskpane"],  // only include the taskpane bundle
+        chunks: ["taskpane"],        //<— only “taskpane”
       }),
+
+      // <-- commands.html only gets the commands bundle
       new HtmlWebpackPlugin({
         filename: "commands.html",
         template: "./src/commands/commands.html",
-        chunks: ["commands"],  // only include the commands bundle
+        chunks: ["commands"],        //<— only “commands”
       }),
+
       new CopyWebpackPlugin({
         patterns: [
           { from: "assets", to: "assets" },
@@ -54,10 +58,9 @@ module.exports = (env, options) => {
             from: "manifest.xml",
             to: "manifest.xml",
             transform(content) {
-              return content.toString().replace(
-                /https:\/\/localhost:3006\//g,
-                urlProd
-              );
+              return content
+                .toString()
+                .replace(/https:\/\/localhost:3006\//g, urlProd);
             },
           },
           { from: "src/taskpane/taskpane.css", to: "taskpane.css" },
