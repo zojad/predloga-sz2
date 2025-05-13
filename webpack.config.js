@@ -3,7 +3,7 @@ const path              = require("path");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
-const urlProd = "https://zojad.github.io/predloga-sz2/docs/";
+const urlProd = "https://zojad.github.io/predloga-sz2/";
 
 module.exports = (env, options) => {
   const dev = options.mode === "development";
