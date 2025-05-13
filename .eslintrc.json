@@ -1,8 +1,21 @@
 {
+  "env": {
+    "browser": true,
+    "es6":    true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType":  "module"
+  },
   "plugins": ["office-addins"],
   "extends": ["plugin:office-addins/recommended"],
+  "globals": {
+    "Office":   "readonly",
+    "Word":     "readonly",
+    "document": "readonly"
+  },
   "rules": {
-    "compat/compat": "off"  // Turns off compatibility warnings (e.g. gap, flex)
+    "compat/compat": "off"
   }
 }
 
