@@ -1,6 +1,6 @@
 /* global Office, Word */
 
-// — quick log so we know this bundle loaded —
+// log on load
 console.log("⭐ preposition.js loaded");
 
 let state = {
@@ -21,6 +21,7 @@ function clearNotification(id) {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
+
 function showNotification(id, options) {
   if (
     Office.NotificationMessages &&
@@ -50,9 +51,9 @@ function determineCorrectPreposition(rawWord) {
   return unvoiced.has(first) ? "s" : "z";
 }
 
-//–– Exported commands ––//
+//–– Commands ––//
 export async function checkDocumentText() {
-  console.log("▶ checkDocumentText()", { isChecking: state.isChecking });
+  console.log("▶ checkDocumentText()", state);
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
@@ -61,35 +62,32 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run start");
 
-      // clear old highlights
+      // clear previous
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // find all lone “s” and “z”
+      // find lone “s” or “z”
       const opts = { matchCase: false, matchWholeWord: true };
-      const sR = context.document.body.search("s", opts);
-      const zR = context.document.body.search("z", opts);
-      sR.load("items"); zR.load("items");
+      const results = context.document.body.search("\\b[sz]\\b", opts);
+      results.load("items");
       await context.sync();
 
-      const raw = [...sR.items, ...zR.items];
-      console.log("→ raw hits:", raw.length);
+      console.log("→ raw wildcard hits:", results.items.length);
 
-      // filter out anything that isn’t exactly “s” or “z”
-      const candidates = raw.filter(r =>
+      // filter exact text
+      const candidates = results.items.filter(r =>
         ["s","z"].includes(r.text.trim().toLowerCase())
       );
       console.log("→ filtered candidates:", candidates.length);
 
       let errors = [];
-      for (const prep of candidates) {
-        // ** FIX 1 ** Use the enum, not a string:
-        const after = prep.getRange(Word.RangeLocation.after);
+      for (let prep of candidates) {
+        // ► FIX #1: use PascalCase enum member
+        const after = prep.getRange(Word.RangeLocation.After);
 
-        // ** FIX 2 ** Expand to the next word:
-        after.expandTo(Word.TextRangeUnit.word);
-
+        // ► FIX #2: PascalCase here too
+        after.expandTo(Word.TextRangeUnit.Word);
         after.load("text");
         await context.sync();
 
@@ -104,9 +102,10 @@ export async function checkDocumentText() {
       }
 
       state.errors = errors;
-      console.log("→ mismatches found:", errors.length);
+      console.log("→ mismatches found:", errors);
 
       if (!errors.length) {
+        console.log("→ no mismatches");
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
           message: "🎉 No ‘s’/‘z’ mismatches!",
@@ -114,7 +113,7 @@ export async function checkDocumentText() {
           persistent: false
         });
       } else {
-        // highlight them & jump to the first
+        // highlight + select first
         errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
         errors[0].range.select();
@@ -133,7 +132,7 @@ export async function checkDocumentText() {
 }
 
 export async function acceptCurrentChange() {
-  console.log("▶ acceptCurrentChange()", { i: state.currentIndex, tot: state.errors.length });
+  console.log("▶ acceptCurrentChange()");
   if (state.currentIndex >= state.errors.length) return;
 
   try {
@@ -159,7 +158,7 @@ export async function acceptCurrentChange() {
 }
 
 export async function rejectCurrentChange() {
-  console.log("▶ rejectCurrentChange()", { i: state.currentIndex });
+  console.log("▶ rejectCurrentChange()");
   if (state.currentIndex >= state.errors.length) return;
 
   try {
@@ -177,14 +176,14 @@ export async function rejectCurrentChange() {
     console.error("rejectCurrentChange error", e);
     showNotification("rejectError", {
       type: "errorMessage",
-      message: "Failed to reject. Please re-run the check.",
+      message: "Failed to reject change. Please re-run the check.",
       persistent: false
     });
   }
 }
 
 export async function acceptAllChanges() {
-  console.log("▶ acceptAllChanges()", { tot: state.errors.length });
+  console.log("▶ acceptAllChanges()");
   if (!state.errors.length) return;
 
   try {
@@ -200,14 +199,14 @@ export async function acceptAllChanges() {
     console.error("acceptAllChanges error", e);
     showNotification("acceptAllError", {
       type: "errorMessage",
-      message: "Failed to apply all changes.",
+      message: "Failed to apply all changes. Please try again.",
       persistent: false
     });
   }
 }
 
 export async function rejectAllChanges() {
-  console.log("▶ rejectAllChanges()", { tot: state.errors.length });
+  console.log("▶ rejectAllChanges()");
   if (!state.errors.length) return;
 
   try {
@@ -220,7 +219,7 @@ export async function rejectAllChanges() {
     console.error("rejectAllChanges error", e);
     showNotification("rejectAllError", {
       type: "errorMessage",
-      message: "Failed to clear changes.",
+      message: "Failed to clear changes. Please try again.",
       persistent: false
     });
   }
