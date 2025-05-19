@@ -1,6 +1,6 @@
 /* global Office, Word */
 
-// — Log immediately when the task logic bundle loads —
+// — quick log so we know this bundle loaded —
 console.log("⭐ preposition.js loaded");
 
 let state = {
@@ -21,7 +21,6 @@ function clearNotification(id) {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
-
 function showNotification(id, options) {
   if (
     Office.NotificationMessages &&
@@ -31,7 +30,7 @@ function showNotification(id, options) {
   }
 }
 
-//–– Core logic helper ––//
+//–– Core logic ––//
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const word = rawWord.normalize("NFC");
@@ -51,48 +50,45 @@ function determineCorrectPreposition(rawWord) {
   return unvoiced.has(first) ? "s" : "z";
 }
 
-//–– Exposed commands ––//
-
+//–– Exported commands ––//
 export async function checkDocumentText() {
-  console.log("checkDocumentText()", { isChecking: state.isChecking });
+  console.log("▶ checkDocumentText()", { isChecking: state.isChecking });
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async context => {
-      console.log("→ Word.run(checkDocumentText) start");
+      console.log("→ Word.run start");
 
-      // Clear previous highlights
+      // clear old highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // Search for “s” and “z”
+      // find all lone “s” and “z”
       const opts = { matchCase: false, matchWholeWord: true };
-      const sRanges = context.document.body.search("s", opts);
-      const zRanges = context.document.body.search("z", opts);
-      sRanges.load("items");
-      zRanges.load("items");
+      const sR = context.document.body.search("s", opts);
+      const zR = context.document.body.search("z", opts);
+      sR.load("items"); zR.load("items");
       await context.sync();
 
-      const raw = [...sRanges.items, ...zRanges.items];
+      const raw = [...sR.items, ...zR.items];
       console.log("→ raw hits:", raw.length);
 
-      const candidates = raw.filter(r => {
-        const t = r.text.trim().toLowerCase();
-        return t === "s" || t === "z";
-      });
+      // filter out anything that isn’t exactly “s” or “z”
+      const candidates = raw.filter(r =>
+        ["s","z"].includes(r.text.trim().toLowerCase())
+      );
       console.log("→ filtered candidates:", candidates.length);
 
       let errors = [];
-      for (let prep of candidates) {
-        const after = prep.getRange("After");
+      for (const prep of candidates) {
+        // ** FIX 1 ** Use the enum, not a string:
+        const after = prep.getRange(Word.RangeLocation.after);
 
-        // ** THIS IS THE FIX **
-        // Use the correct enum name, capital “W”:
-        console.log("Enum available:", Word.TextRangeUnit);
-        after.expandTo(Word.TextRangeUnit.Word);
+        // ** FIX 2 ** Expand to the next word:
+        after.expandTo(Word.TextRangeUnit.word);
 
         after.load("text");
         await context.sync();
@@ -108,7 +104,7 @@ export async function checkDocumentText() {
       }
 
       state.errors = errors;
-      console.log("→ Found mismatches:", errors.length, errors);
+      console.log("→ mismatches found:", errors.length);
 
       if (!errors.length) {
         showNotification(NOTIF_ID, {
@@ -117,14 +113,12 @@ export async function checkDocumentText() {
           icon: "Icon.80x80",
           persistent: false
         });
-        return;
+      } else {
+        // highlight them & jump to the first
+        errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
+        await context.sync();
+        errors[0].range.select();
       }
-
-      // Highlight + select first
-      errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
-      await context.sync();
-      errors[0].range.select();
-      console.log("→ Highlighted and selected first suggestion");
     });
   } catch (e) {
     console.error("checkDocumentText error", e);
@@ -139,7 +133,7 @@ export async function checkDocumentText() {
 }
 
 export async function acceptCurrentChange() {
-  console.log("acceptCurrentChange()", { currentIndex: state.currentIndex, total: state.errors.length });
+  console.log("▶ acceptCurrentChange()", { i: state.currentIndex, tot: state.errors.length });
   if (state.currentIndex >= state.errors.length) return;
 
   try {
@@ -153,7 +147,6 @@ export async function acceptCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
-      console.log("→ accepted one change, now at index", state.currentIndex);
     });
   } catch (e) {
     console.error("acceptCurrentChange error", e);
@@ -166,8 +159,9 @@ export async function acceptCurrentChange() {
 }
 
 export async function rejectCurrentChange() {
-  console.log("rejectCurrentChange()", { currentIndex: state.currentIndex });
+  console.log("▶ rejectCurrentChange()", { i: state.currentIndex });
   if (state.currentIndex >= state.errors.length) return;
+
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
@@ -178,21 +172,21 @@ export async function rejectCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
-      console.log("→ rejected one change, now at index", state.currentIndex);
     });
   } catch (e) {
     console.error("rejectCurrentChange error", e);
     showNotification("rejectError", {
       type: "errorMessage",
-      message: "Failed to reject change. Please re-run the check.",
+      message: "Failed to reject. Please re-run the check.",
       persistent: false
     });
   }
 }
 
 export async function acceptAllChanges() {
-  console.log("acceptAllChanges()", { total: state.errors.length });
+  console.log("▶ acceptAllChanges()", { tot: state.errors.length });
   if (!state.errors.length) return;
+
   try {
     await Word.run(async context => {
       for (const err of state.errors) {
@@ -201,33 +195,32 @@ export async function acceptAllChanges() {
       }
       await context.sync();
       state.errors = [];
-      console.log("→ accepted all changes");
     });
   } catch (e) {
     console.error("acceptAllChanges error", e);
     showNotification("acceptAllError", {
       type: "errorMessage",
-      message: "Failed to apply all changes. Please try again.",
+      message: "Failed to apply all changes.",
       persistent: false
     });
   }
 }
 
 export async function rejectAllChanges() {
-  console.log("rejectAllChanges()", { total: state.errors.length });
+  console.log("▶ rejectAllChanges()", { tot: state.errors.length });
   if (!state.errors.length) return;
+
   try {
     await Word.run(async context => {
       state.errors.forEach(e => e.range.font.highlightColor = null);
       await context.sync();
       state.errors = [];
-      console.log("→ rejected all changes");
     });
   } catch (e) {
     console.error("rejectAllChanges error", e);
     showNotification("rejectAllError", {
       type: "errorMessage",
-      message: "Failed to clear changes. Please try again.",
+      message: "Failed to clear changes.",
       persistent: false
     });
   }
