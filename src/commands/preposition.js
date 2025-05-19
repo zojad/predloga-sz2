@@ -14,13 +14,19 @@ const NOTIF_ID        = "noErrors";
 
 //–– Helpers ––//
 function clearNotification(id) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
+  if (
+    Office.NotificationMessages &&
+    typeof Office.NotificationMessages.deleteAsync === "function"
+  ) {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
 
 function showNotification(id, options) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
+  if (
+    Office.NotificationMessages &&
+    typeof Office.NotificationMessages.addAsync === "function"
+  ) {
     Office.NotificationMessages.addAsync(id, options);
   }
 }
@@ -57,12 +63,12 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run(checkDocumentText) start");
 
-      // clear old
+      // Clear previous highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // find every single “s” or “z”
+      // Search for “s” and “z”
       const opts = { matchCase: false, matchWholeWord: true };
       const sRanges = context.document.body.search("s", opts);
       const zRanges = context.document.body.search("z", opts);
@@ -73,20 +79,20 @@ export async function checkDocumentText() {
       const raw = [...sRanges.items, ...zRanges.items];
       console.log("→ raw hits:", raw.length);
 
-      // filter to exactly “s” or “z”
       const candidates = raw.filter(r => {
         const t = r.text.trim().toLowerCase();
         return t === "s" || t === "z";
       });
       console.log("→ filtered candidates:", candidates.length);
 
-      // for each, grab the next word and compare
       let errors = [];
       for (let prep of candidates) {
         const after = prep.getRange("After");
 
-        // ← **THIS** is the fix: use the real enum
-        after.expandTo(Word.TextRangeUnit.word);
+        // ** THIS IS THE FIX **
+        // Use the correct enum name, capital “W”:
+        console.log("Enum available:", Word.TextRangeUnit);
+        after.expandTo(Word.TextRangeUnit.Word);
 
         after.load("text");
         await context.sync();
@@ -114,7 +120,7 @@ export async function checkDocumentText() {
         return;
       }
 
-      // highlight + select first
+      // Highlight + select first
       errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
       await context.sync();
       errors[0].range.select();
