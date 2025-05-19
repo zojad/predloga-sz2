@@ -1,8 +1,6 @@
 /* global Office, Word */
 
-// log on load
-console.log("⭐ preposition.js loaded");
-
+// –– State ––
 let state = {
   errors: [],
   currentIndex: 0,
@@ -12,26 +10,20 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-//–– Helpers ––//
+// –– Helpers ––
 function clearNotification(id) {
-  if (
-    Office.NotificationMessages &&
-    typeof Office.NotificationMessages.deleteAsync === "function"
-  ) {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
 
 function showNotification(id, options) {
-  if (
-    Office.NotificationMessages &&
-    typeof Office.NotificationMessages.addAsync === "function"
-  ) {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
     Office.NotificationMessages.addAsync(id, options);
   }
 }
 
-//–– Core logic ––//
+// –– Core logic helper ––
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const word = rawWord.normalize("NFC");
@@ -51,7 +43,8 @@ function determineCorrectPreposition(rawWord) {
   return unvoiced.has(first) ? "s" : "z";
 }
 
-//–– Commands ––//
+// –– Exposed commands ––//
+
 export async function checkDocumentText() {
   console.log("▶ checkDocumentText()", state);
   if (state.isChecking) return;
@@ -60,33 +53,34 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      console.log("→ Word.run start");
+      console.log("→ Word.run(start)");
 
-      // clear previous
+      // clear any prior highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // find lone “s” or “z”
+      // do two whole-word searches: “s” and “z”
       const opts = { matchCase: false, matchWholeWord: true };
-      const results = context.document.body.search("\\b[sz]\\b", opts);
-      results.load("items");
+      const sSearch = context.document.body.search("s", opts);
+      const zSearch = context.document.body.search("z", opts);
+      sSearch.load("items");
+      zSearch.load("items");
       await context.sync();
 
-      console.log("→ raw wildcard hits:", results.items.length);
+      const allRanges = [...sSearch.items, ...zSearch.items];
+      console.log("→ raw hits:", allRanges.length);
 
-      // filter exact text
-      const candidates = results.items.filter(r =>
+      // filter down to exact lowercase “s” or “z”
+      const candidates = allRanges.filter(r =>
         ["s","z"].includes(r.text.trim().toLowerCase())
       );
       console.log("→ filtered candidates:", candidates.length);
 
-      let errors = [];
+      // now inspect each candidate
+      const errors = [];
       for (let prep of candidates) {
-        // ► FIX #1: use PascalCase enum member
         const after = prep.getRange(Word.RangeLocation.After);
-
-        // ► FIX #2: PascalCase here too
         after.expandTo(Word.TextRangeUnit.Word);
         after.load("text");
         await context.sync();
@@ -102,10 +96,9 @@ export async function checkDocumentText() {
       }
 
       state.errors = errors;
-      console.log("→ mismatches found:", errors);
+      console.log("→ mismatches found:", errors.length);
 
       if (!errors.length) {
-        console.log("→ no mismatches");
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
           message: "🎉 No ‘s’/‘z’ mismatches!",
@@ -113,7 +106,7 @@ export async function checkDocumentText() {
           persistent: false
         });
       } else {
-        // highlight + select first
+        // highlight and select the first one
         errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
         errors[0].range.select();
@@ -132,7 +125,7 @@ export async function checkDocumentText() {
 }
 
 export async function acceptCurrentChange() {
-  console.log("▶ acceptCurrentChange()");
+  console.log("▶ acceptCurrentChange()", state.currentIndex, "of", state.errors.length);
   if (state.currentIndex >= state.errors.length) return;
 
   try {
@@ -146,6 +139,7 @@ export async function acceptCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
+      console.log("→ moved to index", state.currentIndex);
     });
   } catch (e) {
     console.error("acceptCurrentChange error", e);
@@ -158,7 +152,7 @@ export async function acceptCurrentChange() {
 }
 
 export async function rejectCurrentChange() {
-  console.log("▶ rejectCurrentChange()");
+  console.log("▶ rejectCurrentChange()", state.currentIndex);
   if (state.currentIndex >= state.errors.length) return;
 
   try {
@@ -171,6 +165,7 @@ export async function rejectCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
+      console.log("→ moved to index", state.currentIndex);
     });
   } catch (e) {
     console.error("rejectCurrentChange error", e);
@@ -183,7 +178,7 @@ export async function rejectCurrentChange() {
 }
 
 export async function acceptAllChanges() {
-  console.log("▶ acceptAllChanges()");
+  console.log("▶ acceptAllChanges()", state.errors.length);
   if (!state.errors.length) return;
 
   try {
@@ -194,6 +189,7 @@ export async function acceptAllChanges() {
       }
       await context.sync();
       state.errors = [];
+      console.log("→ accepted all");
     });
   } catch (e) {
     console.error("acceptAllChanges error", e);
@@ -206,7 +202,7 @@ export async function acceptAllChanges() {
 }
 
 export async function rejectAllChanges() {
-  console.log("▶ rejectAllChanges()");
+  console.log("▶ rejectAllChanges()", state.errors.length);
   if (!state.errors.length) return;
 
   try {
@@ -214,6 +210,7 @@ export async function rejectAllChanges() {
       state.errors.forEach(e => e.range.font.highlightColor = null);
       await context.sync();
       state.errors = [];
+      console.log("→ rejected all");
     });
   } catch (e) {
     console.error("rejectAllChanges error", e);
