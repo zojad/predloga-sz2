@@ -62,22 +62,30 @@ export async function checkDocumentText() {
       state.errors = [];
       state.currentIndex = 0;
 
-      const opts = { matchCase: false, matchWholeWord: true };
+      // Use Word wildcard search: < and > mark word boundaries,
+      // [sz] finds either s or z, and matchWildcards must be true.
+      const opts = {
+        matchCase:     false,
+        matchWildcards:true
+      };
       let allRanges = [];
 
       async function find(szScope) {
-        const r = szScope.search("\\b[sz]\\b", opts);
+        const r = szScope.search("<[sz]>", opts);
         r.load("items");
         await context.sync();
         allRanges.push(...r.items);
       }
 
+      // Search only the body for now
       await find(context.document.body);
 
+      // Filter out anything that isn’t exactly "s" or "z"
       const candidates = allRanges.filter(r =>
         ["s","z"].includes(r.text.trim().toLowerCase())
       );
 
+      // For each candidate, peek at the next word and compare
       let errors = [];
       for (let prep of candidates) {
         const after = prep.getRange("After");
@@ -101,10 +109,10 @@ export async function checkDocumentText() {
       if (!errors.length) {
         console.log("No mismatches!");
         showNotification(NOTIF_ID, {
-          type: "informationalMessage",
-          message: "No ‘s’/‘z’ mismatches!",
-          icon: "Icon.80x80",
-          persistent: false
+          type:        "informationalMessage",
+          message:     "🎉 No ‘s’/‘z’ mismatches!",
+          icon:        "Icon.80x80",
+          persistent:  false
         });
         return;
       }
@@ -118,9 +126,9 @@ export async function checkDocumentText() {
   } catch (e) {
     console.error("checkDocumentText error", e);
     showNotification("checkError", {
-      type: "errorMessage",
-      message: "Check failed; please try again.",
-      persistent: false
+      type:        "errorMessage",
+      message:     "Check failed; please try again.",
+      persistent:  false
     });
   } finally {
     state.isChecking = false;
@@ -147,9 +155,9 @@ export async function acceptCurrentChange() {
   } catch (e) {
     console.error("acceptCurrentChange error", e);
     showNotification("acceptError", {
-      type: "errorMessage",
-      message: "Failed to apply change. Please re-run the check.",
-      persistent: false
+      type:        "errorMessage",
+      message:     "Failed to apply change. Please re-run the check.",
+      persistent:  false
     });
   }
 }
@@ -173,9 +181,9 @@ export async function rejectCurrentChange() {
   } catch (e) {
     console.error("rejectCurrentChange error", e);
     showNotification("rejectError", {
-      type: "errorMessage",
-      message: "Failed to reject change. Please re-run the check.",
-      persistent: false
+      type:        "errorMessage",
+      message:     "Failed to reject change. Please re-run the check.",
+      persistent:  false
     });
   }
 }
@@ -197,9 +205,9 @@ export async function acceptAllChanges() {
   } catch (e) {
     console.error("acceptAllChanges error", e);
     showNotification("acceptAllError", {
-      type: "errorMessage",
-      message: "Failed to apply all changes. Please try again.",
-      persistent: false
+      type:        "errorMessage",
+      message:     "Failed to apply all changes. Please try again.",
+      persistent:  false
     });
   }
 }
@@ -218,9 +226,9 @@ export async function rejectAllChanges() {
   } catch (e) {
     console.error("rejectAllChanges error", e);
     showNotification("rejectAllError", {
-      type: "errorMessage",
-      message: "Failed to clear changes. Please try again.",
-      persistent: false
+      type:        "errorMessage",
+      message:     "Failed to clear changes. Please try again.",
+      persistent:  false
     });
   }
 }
