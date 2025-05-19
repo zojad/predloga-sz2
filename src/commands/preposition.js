@@ -29,7 +29,6 @@ function showNotification(id, options) {
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const word = rawWord.normalize("NFC");
-  // find first letter or digit
   const match = word.match(/[\p{L}0-9]/u);
   if (!match) return null;
   const first = match[0].toLowerCase();
@@ -47,7 +46,6 @@ function determineCorrectPreposition(rawWord) {
 }
 
 //–– Exposed commands ––//
-
 export async function checkDocumentText() {
   console.log("checkDocumentText()", { isChecking: state.isChecking });
   if (state.isChecking) return;
@@ -58,36 +56,35 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run(checkDocumentText) start");
 
-      // Clear previous highlights
+      // 1) clear old highlights & state
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
+      // 2) search for single letters “s” & “z”
       const opts = { matchCase: false, matchWholeWord: true };
-      let allRanges = [];
-
-      // search separately for "s" and "z"
       const sRanges = context.document.body.search("s", opts);
       const zRanges = context.document.body.search("z", opts);
       sRanges.load("items");
       zRanges.load("items");
       await context.sync();
 
-      allRanges.push(...sRanges.items, ...zRanges.items);
-      console.log("→ raw hits:", allRanges.length);
+      const raw = [...sRanges.items, ...zRanges.items];
+      console.log("→ raw hits:", raw.length);
 
-      // filter to only single-letter matches
-      const candidates = allRanges.filter(r => {
+      // 3) filter down to exact “s” or “z”
+      const candidates = raw.filter(r => {
         const t = r.text.trim().toLowerCase();
         return (t === "s" || t === "z");
       });
       console.log("→ filtered candidates:", candidates.length);
 
+      // 4) for each candidate, grab the next word and compare
       let errors = [];
       for (let prep of candidates) {
-        // grab the next word
         const after = prep.getRange("After");
-        after.expandTo(Word.TextRangeUnit.word);
+        // → use a string here instead of the missing enum
+        after.expandTo("Word");
         after.load("text");
         await context.sync();
 
@@ -104,6 +101,7 @@ export async function checkDocumentText() {
       state.errors = errors;
       console.log("→ Found mismatches:", errors.length, errors);
 
+      // 5) no errors? show a toast
       if (!errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
@@ -114,7 +112,7 @@ export async function checkDocumentText() {
         return;
       }
 
-      // Highlight + select first
+      // 6) highlight them & select the first
       errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
       await context.sync();
       errors[0].range.select();
@@ -135,7 +133,6 @@ export async function checkDocumentText() {
 export async function acceptCurrentChange() {
   console.log("acceptCurrentChange()", { currentIndex: state.currentIndex, total: state.errors.length });
   if (state.currentIndex >= state.errors.length) return;
-
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
@@ -147,7 +144,7 @@ export async function acceptCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
-      console.log("→ accepted one change, moved to index", state.currentIndex);
+      console.log("→ accepted one change, now at index", state.currentIndex);
     });
   } catch (e) {
     console.error("acceptCurrentChange error", e);
@@ -162,7 +159,6 @@ export async function acceptCurrentChange() {
 export async function rejectCurrentChange() {
   console.log("rejectCurrentChange()", { currentIndex: state.currentIndex });
   if (state.currentIndex >= state.errors.length) return;
-
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
@@ -173,7 +169,7 @@ export async function rejectCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
-      console.log("→ rejected one change, moved to index", state.currentIndex);
+      console.log("→ rejected one change, now at index", state.currentIndex);
     });
   } catch (e) {
     console.error("rejectCurrentChange error", e);
@@ -188,7 +184,6 @@ export async function rejectCurrentChange() {
 export async function acceptAllChanges() {
   console.log("acceptAllChanges()", { total: state.errors.length });
   if (!state.errors.length) return;
-
   try {
     await Word.run(async context => {
       for (const err of state.errors) {
@@ -196,8 +191,8 @@ export async function acceptAllChanges() {
         err.range.font.highlightColor = null;
       }
       await context.sync();
-      console.log("→ accepted all changes");
       state.errors = [];
+      console.log("→ accepted all changes");
     });
   } catch (e) {
     console.error("acceptAllChanges error", e);
@@ -212,13 +207,12 @@ export async function acceptAllChanges() {
 export async function rejectAllChanges() {
   console.log("rejectAllChanges()", { total: state.errors.length });
   if (!state.errors.length) return;
-
   try {
     await Word.run(async context => {
       state.errors.forEach(e => e.range.font.highlightColor = null);
       await context.sync();
-      console.log("→ rejected all changes");
       state.errors = [];
+      console.log("→ rejected all changes");
     });
   } catch (e) {
     console.error("rejectAllChanges error", e);
@@ -229,4 +223,3 @@ export async function rejectAllChanges() {
     });
   }
 }
-
