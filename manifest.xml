@@ -8,7 +8,7 @@
 
   <!-- IDs & metadata -->
   <Id>1495a86f-7d58-428b-b75f-022f5df7f795</Id>
-  <Version>1.0.0.14</Version>
+  <Version>1.0.0.15</Version>
   <ProviderName>zojad</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Predloga S/Z"/>
