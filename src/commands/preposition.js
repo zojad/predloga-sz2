@@ -46,6 +46,7 @@ function determineCorrectPreposition(rawWord) {
 }
 
 //–– Exposed commands ––//
+
 export async function checkDocumentText() {
   console.log("checkDocumentText()", { isChecking: state.isChecking });
   if (state.isChecking) return;
@@ -56,12 +57,12 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run(checkDocumentText) start");
 
-      // 1) clear old highlights & state
+      // clear old
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // 2) search for single letters “s” & “z”
+      // find every single “s” or “z”
       const opts = { matchCase: false, matchWholeWord: true };
       const sRanges = context.document.body.search("s", opts);
       const zRanges = context.document.body.search("z", opts);
@@ -72,19 +73,21 @@ export async function checkDocumentText() {
       const raw = [...sRanges.items, ...zRanges.items];
       console.log("→ raw hits:", raw.length);
 
-      // 3) filter down to exact “s” or “z”
+      // filter to exactly “s” or “z”
       const candidates = raw.filter(r => {
         const t = r.text.trim().toLowerCase();
-        return (t === "s" || t === "z");
+        return t === "s" || t === "z";
       });
       console.log("→ filtered candidates:", candidates.length);
 
-      // 4) for each candidate, grab the next word and compare
+      // for each, grab the next word and compare
       let errors = [];
       for (let prep of candidates) {
         const after = prep.getRange("After");
-        // → use a string here instead of the missing enum
-        after.expandTo("Word");
+
+        // ← **THIS** is the fix: use the real enum
+        after.expandTo(Word.TextRangeUnit.word);
+
         after.load("text");
         await context.sync();
 
@@ -101,7 +104,6 @@ export async function checkDocumentText() {
       state.errors = errors;
       console.log("→ Found mismatches:", errors.length, errors);
 
-      // 5) no errors? show a toast
       if (!errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
@@ -112,7 +114,7 @@ export async function checkDocumentText() {
         return;
       }
 
-      // 6) highlight them & select the first
+      // highlight + select first
       errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
       await context.sync();
       errors[0].range.select();
@@ -133,6 +135,7 @@ export async function checkDocumentText() {
 export async function acceptCurrentChange() {
   console.log("acceptCurrentChange()", { currentIndex: state.currentIndex, total: state.errors.length });
   if (state.currentIndex >= state.errors.length) return;
+
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
