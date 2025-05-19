@@ -48,14 +48,21 @@ function determineCorrectPreposition(rawWord) {
   return unvoiced.has(first) ? "s" : "z";
 }
 
-export async function checkDocumentText() {
-  if (state.isChecking) return;
+/**
+ * Checks the doc for standalone “s”/“z” and highlights mismatches.
+ */
+export async function checkDocumentText(event) {
+  // prevent re-entry
+  if (state.isChecking) {
+    event.completed();
+    return;
+  }
   state.isChecking = true;
   clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async context => {
-      // Clear previous highlights
+      // clear old highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
@@ -70,10 +77,9 @@ export async function checkDocumentText() {
         allRanges.push(...r.items);
       }
 
-      // Currently only body; headers/footers/tables omitted for simplicity
       await find(context.document.body);
 
-      // Filter exact “s”/“z”
+      // filter exactly "s" or "z"
       const candidates = allRanges.filter(r =>
         ["s","z"].includes(r.text.trim().toLowerCase())
       );
@@ -106,7 +112,7 @@ export async function checkDocumentText() {
         return;
       }
 
-      // Highlight + select first
+      // highlight and select first
       errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
       await context.sync();
       errors[0].range.select();
@@ -120,11 +126,19 @@ export async function checkDocumentText() {
     });
   } finally {
     state.isChecking = false;
+    event.completed();
   }
 }
 
-export async function acceptCurrentChange() {
-  if (state.currentIndex >= state.errors.length) return;
+/**
+ * Replaces the current error with its suggestion and advances to the next.
+ */
+export async function acceptCurrentChange(event) {
+  if (state.currentIndex >= state.errors.length) {
+    event.completed();
+    return;
+  }
+
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
@@ -144,11 +158,20 @@ export async function acceptCurrentChange() {
       message: "Failed to apply change. Please re-run the check.",
       persistent: false
     });
+  } finally {
+    event.completed();
   }
 }
 
-export async function rejectCurrentChange() {
-  if (state.currentIndex >= state.errors.length) return;
+/**
+ * Clears highlight on current error (i.e. “rejects” it) and advances.
+ */
+export async function rejectCurrentChange(event) {
+  if (state.currentIndex >= state.errors.length) {
+    event.completed();
+    return;
+  }
+
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
@@ -167,11 +190,20 @@ export async function rejectCurrentChange() {
       message: "Failed to reject change. Please re-run the check.",
       persistent: false
     });
+  } finally {
+    event.completed();
   }
 }
 
-export async function acceptAllChanges() {
-  if (!state.errors.length) return;
+/**
+ * Applies all suggestions in one go.
+ */
+export async function acceptAllChanges(event) {
+  if (!state.errors.length) {
+    event.completed();
+    return;
+  }
+
   try {
     await Word.run(async context => {
       for (const err of state.errors) {
@@ -188,11 +220,20 @@ export async function acceptAllChanges() {
       message: "Failed to apply all changes. Please try again.",
       persistent: false
     });
+  } finally {
+    event.completed();
   }
 }
 
-export async function rejectAllChanges() {
-  if (!state.errors.length) return;
+/**
+ * Clears all highlights (i.e. “rejects” everything).
+ */
+export async function rejectAllChanges(event) {
+  if (!state.errors.length) {
+    event.completed();
+    return;
+  }
+
   try {
     await Word.run(async context => {
       state.errors.forEach(e => e.range.font.highlightColor = null);
@@ -206,5 +247,7 @@ export async function rejectAllChanges() {
       message: "Failed to clear changes. Please try again.",
       persistent: false
     });
+  } finally {
+    event.completed();
   }
 }
