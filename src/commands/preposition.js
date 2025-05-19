@@ -14,15 +14,13 @@ const NOTIF_ID        = "noErrors";
 
 //–– Helpers ––//
 function clearNotification(id) {
-  if (Office.NotificationMessages &&
-      typeof Office.NotificationMessages.deleteAsync === "function") {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
 
 function showNotification(id, options) {
-  if (Office.NotificationMessages &&
-      typeof Office.NotificationMessages.addAsync === "function") {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
     Office.NotificationMessages.addAsync(id, options);
   }
 }
@@ -48,7 +46,6 @@ function determineCorrectPreposition(rawWord) {
 }
 
 //–– Exposed commands ––//
-
 export async function checkDocumentText() {
   console.log("checkDocumentText()", { errors: state.errors, isChecking: state.isChecking });
   if (state.isChecking) return;
@@ -64,26 +61,23 @@ export async function checkDocumentText() {
       state.errors = [];
       state.currentIndex = 0;
 
-      // **WILDCARD search** for any standalone “s” or “z”
-      const searchOptions = {
-        matchCase: false,
-        matchWholeWord: true,
-        includeWildcards: true
-      };
+      // 1️⃣ Wildcard search for standalone “s” or “z”
       const foundRanges = context.document.body
-        .search("[sz]", searchOptions);
+        .search("<[sz]>", { includeWildcards: true });
       foundRanges.load("items");
       await context.sync();
 
-      // Post-filter to exact “s” or “z”
+      console.log("→ raw wildcard hits:", foundRanges.items.length);
+
+      // 2️⃣ Filter out anything that somehow isn't exactly "s" or "z"
       const candidates = foundRanges.items.filter(r =>
         ["s","z"].includes(r.text.trim().toLowerCase())
       );
 
-      console.log("→ raw candidates:", candidates.length);
+      console.log("→ filtered candidates:", candidates.length);
 
-      // Now look at the next word to see if it really is a mismatch
-      const errors = [];
+      // 3️⃣ Loop through each and decide if it's wrong
+      let errors = [];
       for (let prep of candidates) {
         const after = prep.getRange("After");
         after.expandTo(Word.TextRangeUnit.word);
@@ -104,18 +98,21 @@ export async function checkDocumentText() {
       console.log("→ Found mismatches:", errors);
 
       if (!errors.length) {
+        console.log("No mismatches!");
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
           message: "🎉 No ‘s’/‘z’ mismatches!",
           icon: "Icon.80x80",
           persistent: false
         });
-      } else {
-        // Highlight + select first
-        errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
-        await context.sync();
-        errors[0].range.select();
+        return;
       }
+
+      // Highlight + select first
+      errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
+      await context.sync();
+      errors[0].range.select();
+      console.log("→ Highlighted and selected first suggestion");
     });
   } catch (e) {
     console.error("checkDocumentText error", e);
@@ -144,6 +141,7 @@ export async function acceptCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
+      console.log("→ accepted one change, moved to index", state.currentIndex);
     });
   } catch (e) {
     console.error("acceptCurrentChange error", e);
@@ -169,6 +167,7 @@ export async function rejectCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
+      console.log("→ rejected one change, moved to index", state.currentIndex);
     });
   } catch (e) {
     console.error("rejectCurrentChange error", e);
@@ -191,6 +190,7 @@ export async function acceptAllChanges() {
         err.range.font.highlightColor = null;
       }
       await context.sync();
+      console.log("→ accepted all changes");
       state.errors = [];
     });
   } catch (e) {
@@ -211,6 +211,7 @@ export async function rejectAllChanges() {
     await Word.run(async context => {
       state.errors.forEach(e => e.range.font.highlightColor = null);
       await context.sync();
+      console.log("→ rejected all changes");
       state.errors = [];
     });
   } catch (e) {
