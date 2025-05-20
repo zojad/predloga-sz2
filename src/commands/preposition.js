@@ -49,36 +49,40 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run(start)");
 
+      // Clear previous highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      const opts = { matchCase: false, matchWholeWord: true };
+      // Find every standalone "s" or "z"
+      const opts    = { matchCase: false, matchWholeWord: true };
       const sSearch = context.document.body.search("s", opts);
       const zSearch = context.document.body.search("z", opts);
       sSearch.load("items");
       zSearch.load("items");
       await context.sync();
 
-      const allRanges = [...sSearch.items, ...zSearch.items];
-      console.log("→ found", allRanges.length, "s/z candidates");
-
+      const allRanges = [...sSearch.items, ...zSearch.items]
       const candidates = allRanges.filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
+      console.log("→ found", candidates.length, "s/z candidates");
 
       const errors = [];
       for (const prep of candidates) {
+        // get a zero-length range just after the preposition
         const after = prep.getRange("After");
-        after.load("text");
+
+        // EXPAND it to include the very next word (up to space or punctuation)
+        const nextWordRange = after.getNextTextRange(
+          [" ", "\n", ".", ",", ";", "?", "!"], /* trimSpacing= */ true
+        );
+        nextWordRange.load("text");
         await context.sync();
 
-        const text = after.text.trim();
-        const match = text.match(/^\s*([^\s.,;!?]+)/);
-        if (!match) continue;
+        const nextWord = nextWordRange.text.trim();
+        if (!nextWord) continue;
 
-        const nextWord = match[1];
         const actual = prep.text.trim().toLowerCase();
         const expect = determineCorrectPreposition(nextWord);
-
         if (expect && actual !== expect) {
           errors.push({ range: prep, suggestion: expect });
         }
@@ -95,6 +99,7 @@ export async function checkDocumentText() {
           persistent: false
         });
       } else {
+        // highlight them and select the first one
         errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
         errors[0].range.select();
