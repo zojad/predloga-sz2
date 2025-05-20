@@ -49,12 +49,12 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run(start)");
 
-      // clear previous highlights
+      // Clear previous highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // find every standalone "s" or "z"
+      // Search for standalone "s" or "z"
       const opts    = { matchCase: false, matchWholeWord: true };
       const sSearch = context.document.body.search("s", opts);
       const zSearch = context.document.body.search("z", opts);
@@ -68,12 +68,9 @@ export async function checkDocumentText() {
 
       const errors = [];
       for (const prep of candidates) {
-        // get a zero-length range right after the "s" or "z"
         const after = prep.getRange("After");
-
-        // expand it to capture the next word up to whitespace/punctuation
         const nextWordRange = after.getNextTextRange(
-          [" ", "\n", ".", ",", ";", "?", "!"], /* trimSpacing= */ true
+          [" ", "\n", ".", ",", ";", "?", "!"], /*trimSpacing=*/ true
         );
         nextWordRange.load("text");
         await context.sync();
@@ -84,7 +81,6 @@ export async function checkDocumentText() {
         const actual = prep.text.trim().toLowerCase();
         const expect = determineCorrectPreposition(nextWord);
         if (expect && actual !== expect) {
-          // track this Range so later batches can modify it
           context.trackedObjects.add(prep);
           errors.push({ range: prep, suggestion: expect });
         }
@@ -101,10 +97,10 @@ export async function checkDocumentText() {
           persistent: false
         });
       } else {
-        // highlight them and select the first one
+        // Highlight all and select the first one
         errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
-        await context.sync();
         errors[0].range.select();
+        await context.sync();
       }
     });
   } catch (e) {
@@ -120,21 +116,24 @@ export async function checkDocumentText() {
 }
 
 export async function acceptCurrentChange() {
-  console.log("▶ acceptCurrentChange()", { currentIndex: state.currentIndex, errors: state.errors.length });
+  console.log("▶ acceptCurrentChange()", { index: state.currentIndex, total: state.errors.length });
   if (state.currentIndex >= state.errors.length) return;
+
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
-      const sel = context.document.getSelection();
-      console.log(`🔁 Replacing "${sel.text}" → "${err.suggestion}"`);
-      sel.insertText(err.suggestion, Word.InsertLocation.replace);
-      sel.font.highlightColor = null;
-      await context.sync();
 
+      // Replace the preposition and clear its highlight
+      err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+      err.range.font.highlightColor = null;
+
+      // Move to next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
+
+      await context.sync();
     });
   } catch (e) {
     console.error("acceptCurrentChange error", e);
@@ -142,18 +141,23 @@ export async function acceptCurrentChange() {
 }
 
 export async function rejectCurrentChange() {
-  console.log("▶ rejectCurrentChange()", { currentIndex: state.currentIndex, errors: state.errors.length });
+  console.log("▶ rejectCurrentChange()", { index: state.currentIndex, total: state.errors.length });
   if (state.currentIndex >= state.errors.length) return;
+
   try {
     await Word.run(async context => {
-      const sel = context.document.getSelection();
-      sel.font.highlightColor = null;
-      await context.sync();
+      const err = state.errors[state.currentIndex];
 
+      // Just clear the highlight
+      err.range.font.highlightColor = null;
+
+      // Move to next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
+
+      await context.sync();
     });
   } catch (e) {
     console.error("rejectCurrentChange error", e);
@@ -161,16 +165,17 @@ export async function rejectCurrentChange() {
 }
 
 export async function acceptAllChanges() {
+  console.log("▶ acceptAllChanges()", { total: state.errors.length });
   if (!state.errors.length) return;
+
   try {
     await Word.run(async context => {
-      for (const err of state.errors) {
-        const sel = err.range;
-        sel.insertText(err.suggestion, Word.InsertLocation.replace);
-        sel.font.highlightColor = null;
-      }
-      await context.sync();
+      state.errors.forEach(err => {
+        err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+        err.range.font.highlightColor = null;
+      });
       state.errors = [];
+      await context.sync();
     });
   } catch (e) {
     console.error("acceptAllChanges error", e);
@@ -178,14 +183,14 @@ export async function acceptAllChanges() {
 }
 
 export async function rejectAllChanges() {
+  console.log("▶ rejectAllChanges()", { total: state.errors.length });
   if (!state.errors.length) return;
+
   try {
     await Word.run(async context => {
-      for (const err of state.errors) {
-        err.range.font.highlightColor = null;
-      }
-      await context.sync();
+      state.errors.forEach(err => err.range.font.highlightColor = null);
       state.errors = [];
+      await context.sync();
     });
   } catch (e) {
     console.error("rejectAllChanges error", e);
