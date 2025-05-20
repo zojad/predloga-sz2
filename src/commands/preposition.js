@@ -10,13 +10,13 @@ const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
 function clearNotification(id) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
+  if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
 
 function showNotification(id, options) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
+  if (Office.NotificationMessages?.addAsync) {
     Office.NotificationMessages.addAsync(id, options);
   }
 }
@@ -29,8 +29,9 @@ function determineCorrectPreposition(rawWord) {
   const first = match[0].toLowerCase();
 
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
-  const numMap   = {
-    '1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'
+  const numMap = {
+    '1': 'e', '2': 'd', '3': 't', '4': 'š', '5': 'p',
+    '6': 'š', '7': 's', '8': 'o', '9': 'd', '0': 'n'
   };
 
   if (/\d/.test(first)) {
@@ -40,14 +41,14 @@ function determineCorrectPreposition(rawWord) {
 }
 
 export async function checkDocumentText() {
-  console.log("\u25B6 checkDocumentText()", state);
+  console.log("▶ checkDocumentText()", state);
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async context => {
-      console.log("\u2192 Word.run(start)");
+      console.log("→ Word.run(start)");
 
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
@@ -61,29 +62,18 @@ export async function checkDocumentText() {
       await context.sync();
 
       const allRanges = [...sSearch.items, ...zSearch.items];
-      console.log("\u2192 found", allRanges.length, "s/z candidates");
+      console.log("→ found", allRanges.length, "s/z candidates");
 
-      const candidates = allRanges.filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
-
+      const candidates = allRanges.filter(r => ["s", "z"].includes(r.text.trim().toLowerCase()));
       const errors = [];
-      for (let prep of candidates) {
-        let after;
-        try {
-          after = prep.getRange(Word.RangeLocation.After);
-          if (typeof after.expandTo === "function" && Word?.TextRangeUnit?.Word) {
-            after.expandTo(Word.TextRangeUnit.Word);
-            after.load("text");
-            await context.sync();
-          } else {
-            console.warn("Skipping candidate; expandTo unsupported");
-            continue;
-          }
-        } catch (e) {
-          console.warn("Skipping candidate due to error:", e);
-          continue;
-        }
 
-        const nextWord = after.text.trim();
+      for (const prep of candidates) {
+        const after = prep.getRange("After");
+        const nextWords = after.getTextRanges([" "], true); // Split by space, trim=true
+        nextWords.load("items");
+        await context.sync();
+
+        const nextWord = nextWords.items[0]?.text.trim();
         if (!nextWord) continue;
 
         const actual = prep.text.trim().toLowerCase();
@@ -94,12 +84,12 @@ export async function checkDocumentText() {
       }
 
       state.errors = errors;
-      console.log("\u2192 mismatches found:", errors.length);
+      console.log("→ mismatches found:", errors.length);
 
       if (!errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
-          message: "\u2728 No 's'/'z' mismatches!",
+          message: "🎉 No 's'/'z' mismatches!",
           icon: "Icon.80x80",
           persistent: false
         });
