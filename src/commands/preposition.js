@@ -1,216 +1,250 @@
-// Global state for tracking mismatches
+/* global Office, Word */
+
+// state holds the list of mismatched ranges and which one we're on
 const state = {
-  errors: [],
-  currentIndex: 0,
+  errors: [],        // Word.Range[] of each bad “s”/“z”
+  currentIndex: 0,   // which error is “current”
   isChecking: false
 };
 
-function checkDocumentText() {
-  console.log('checkDocumentText()', state);
+const HIGHLIGHT_COLOR = "#FFC0CB";
+const NOTIF_ID        = "noErrors";
+
+// Utilities for showing/clearing the little Office ribbon notifications
+function clearNotification(id) {
+  if (Office.NotificationMessages?.deleteAsync) {
+    Office.NotificationMessages.deleteAsync(id);
+  }
+}
+function showNotification(id, options) {
+  if (Office.NotificationMessages?.addAsync) {
+    Office.NotificationMessages.addAsync(id, options);
+  }
+}
+
+// Your logic for choosing “s” vs “z” based on the next word’s first character
+function determineCorrectPreposition(nextWord) {
+  if (!nextWord) return null;
+  const m = nextWord.normalize("NFC").match(/[\p{L}0-9]/u);
+  if (!m) return null;
+  const first = m[0].toLowerCase();
+  const voiceless = new Set(['c','č','f','h','k','p','s','š','t']);
+  if (/\d/.test(first)) {
+    // Map digits to their Slovene‐sound letter, then treat that as voiceless/voiced
+    const digitMap = { '1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n' };
+    return voiceless.has(digitMap[first]) ? "s" : "z";
+  }
+  return voiceless.has(first) ? "s" : "z";
+}
+
+// ----------------------
+// 1) Check & highlight
+// ----------------------
+export async function checkDocumentText() {
   if (state.isChecking) return;
   state.isChecking = true;
+  clearNotification(NOTIF_ID);
   state.errors = [];
   state.currentIndex = 0;
-  Word.run(async context => {
-    console.log('Word.run(start)');
-    const body = context.document.body;
-    // Find all instances of "s" or "z" (including uppercase) as whole words
-    const sResults = body.search("s", { matchWholeWord: true });
-    const zResults = body.search("z", { matchWholeWord: true });
-    const SResults = body.search("S", { matchWholeWord: true });
-    const ZResults = body.search("Z", { matchWholeWord: true });
-    context.load(sResults, 'items');
-    context.load(zResults, 'items');
-    context.load(SResults, 'items');
-    context.load(ZResults, 'items');
-    await context.sync();
-    const candidates = sResults.items.concat(zResults.items, SResults.items, ZResults.items);
-    console.log(`found ${candidates.length} s/z candidates`);
-    // Set of voiceless consonants (if next word starts with these, the correct preposition is "s")
-    const voiceless = new Set(['c','č','f','h','k','p','s','š','t','x',
-                                'C','Č','F','H','K','P','S','Š','T','X']);
-    // Prepare to get the text of the next word after each candidate
-    const nextRanges = [];
-    for (let cand of candidates) {
-      // Get the next text range after the preposition, up to the next punctuation/space
-      let nextRange = cand.getNextTextRange([",", ".", ":", ";", "!", "?", " ", "\t", "\r", "\n"], true);
-      context.load(nextRange, 'text');
-      nextRanges.push(nextRange);
-    }
-    await context.sync();
-    // Evaluate each candidate and mark mismatches
-    for (let i = 0; i < candidates.length; i++) {
-      const prepositionRange = candidates[i];
-      const nextText = nextRanges[i].text;
-      if (!nextText || nextText.length === 0) {
-        // No following word (end of paragraph or document)
-        continue;
+
+  try {
+    await Word.run(async context => {
+      // 1. Undo any old highlights
+      state.errors.forEach(e => e.range.font.highlightColor = null);
+
+      // 2. Find every standalone “s” or “z” (both cases)
+      const opts = { matchWholeWord: true, matchCase: false };
+      const sRes = context.document.body.search("s", opts);
+      const zRes = context.document.body.search("z", opts);
+      sRes.load("items"); zRes.load("items");
+      await context.sync();
+
+      const candidates = [...sRes.items, ...zRes.items]
+        .filter(r => /^[sSzZ]$/.test(r.text));
+
+      // 3. For each one, pull the very next word and compare
+      for (let r of candidates) {
+        const after = r.getRange("After")
+                       .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+        after.load("text");
+        await context.sync();
+        const nxt = after.text.trim();
+        if (!nxt) continue;
+
+        const actual = r.text.trim().toLowerCase();
+        const expect = determineCorrectPreposition(nxt);
+        if (expect && actual !== expect) {
+          // track & highlight it
+          context.trackedObjects.add(r);
+          r.font.highlightColor = HIGHLIGHT_COLOR;
+          state.errors.push(r);
+        }
       }
-      const firstChar = nextText[0];
-      // Determine what the correct preposition should be ("z" if next word starts with voiced or vowel, "s" if voiceless)
-      let shouldUseZ = true;
-      if (voiceless.has(firstChar)) {
-        shouldUseZ = false;
+
+      if (!state.errors.length) {
+        showNotification(NOTIF_ID, {
+          type: "informationalMessage",
+          message: "✨ No mismatches!",
+          icon: "Icon.80x80"
+        });
+      } else {
+        // select the first mismatch so the user sees where to click “Accept”
+        const first = state.errors[0];
+        context.trackedObjects.add(first);
+        first.select();
+        await context.sync();
       }
-      const currentPreposition = prepositionRange.text;
-      if (!currentPreposition) continue;
-      const currentLower = currentPreposition.toLowerCase();
-      const correctPreposition = shouldUseZ ? 'z' : 's';
-      if (currentLower !== correctPreposition) {
-        // Mismatch found – highlight it and add to errors list
-        prepositionRange.font.highlightColor = 'Yellow';
-        prepositionRange.track();  // keep the range for later use
-        state.errors.push(prepositionRange);
-      }
-    }
-    console.log(`mismatches found: ${state.errors.length}`);
-  })
-  .catch(err => {
-    console.error(err);
-  })
-  .finally(() => {
+    });
+  } catch (e) {
+    console.error(e);
+    showNotification(NOTIF_ID, { type: "errorMessage", message: "Check failed" });
+  } finally {
     state.isChecking = false;
-  });
+  }
 }
 
-function acceptCurrentChange() {
-  console.log('acceptCurrentChange()', { currentIndex: state.currentIndex, errors: state.errors.length });
-  if (!state.errors || state.errors.length === 0) {
-    return;
-  }
-  Word.run(async context => {
-    console.log('inside acceptCurrentChange Word.run');
-    let errorRange = state.errors[state.currentIndex];
-    // Load the current text of the range (should be the wrong preposition)
-    context.load(errorRange, 'text');
-    await context.sync();
-    let wrongChar = errorRange.text || '';
-    // Determine the correct character, preserving case
-    let correctChar;
-    if (wrongChar === 's') correctChar = 'z';
-    else if (wrongChar === 'S') correctChar = 'Z';
-    else if (wrongChar === 'z') correctChar = 's';
-    else if (wrongChar === 'Z') correctChar = 'S';
-    else {
-      console.warn('Unexpected preposition character:', wrongChar);
-      return;
-    }
-    console.log(`Replacing '${wrongChar}' -> '${correctChar}'`);
-    // Replace the wrong preposition with the correct one and remove highlight
-    errorRange.insertText(correctChar, Word.InsertLocation.replace);
-    errorRange.font.highlightColor = null;
-    // Select the next mismatch in the document (if any)
-    if (state.currentIndex + 1 < state.errors.length) {
-      const nextRange = state.errors[state.currentIndex + 1];
-      nextRange.select();
-    }
-    // Stop tracking the fixed range
-    context.trackedObjects.remove(errorRange);
-    await context.sync();
-  })
-  .then(() => {
-    // Remove the resolved error from the list and update index
-    state.errors.splice(state.currentIndex, 1);
-    if (state.currentIndex >= state.errors.length) {
-      // Reset index if we reached the end of the list
+// ---------------------------------
+// 2) Accept one (replace & advance)
+// ---------------------------------
+export async function acceptCurrentChange() {
+  if (state.currentIndex >= state.errors.length) return;
+
+  try {
+    await Word.run(async context => {
+      const r = state.errors[state.currentIndex];
+      context.trackedObjects.add(r);
+
+      // load the wrong letter
+      context.load(r, "text");
+      await context.sync();
+      const wrong = r.text;
+      // decide the correct letter, respecting uppercase
+      const corr =
+        wrong === "s" ? "z" :
+        wrong === "S" ? "Z" :
+        wrong === "z" ? "s" :
+        wrong === "Z" ? "S" :
+        wrong;
+
+      r.insertText(corr, Word.InsertLocation.replace);
+      r.font.highlightColor = null;
+
+      // advance index and select next
+      state.currentIndex++;
+      if (state.currentIndex < state.errors.length) {
+        const nxt = state.errors[state.currentIndex];
+        context.trackedObjects.add(nxt);
+        nxt.select();
+      }
+
+      await context.sync();
+    });
+
+    // remove the one we fixed
+    state.errors.splice(state.currentIndex - 1, 1);
+    if (state.currentIndex > state.errors.length) {
       state.currentIndex = 0;
     }
-  })
-  .catch(error => {
-    console.error(error);
-  });
+  } catch (e) {
+    console.error(e);
+  }
 }
 
-function rejectCurrentChange() {
-  console.log('rejectCurrentChange()', { currentIndex: state.currentIndex, errors: state.errors.length });
-  if (!state.errors || state.errors.length === 0) {
-    return;
-  }
-  Word.run(async context => {
-    console.log('inside rejectCurrentChange Word.run');
-    let errorRange = state.errors[state.currentIndex];
-    // Keep the text as is, just remove the highlight
-    errorRange.font.highlightColor = null;
-    // Select the next mismatch (if any)
-    if (state.currentIndex + 1 < state.errors.length) {
-      const nextRange = state.errors[state.currentIndex + 1];
-      nextRange.select();
-    }
-    // Stop tracking this (ignored) range
-    context.trackedObjects.remove(errorRange);
-    await context.sync();
-  })
-  .then(() => {
-    // Remove the skipped error from the list and update index
-    state.errors.splice(state.currentIndex, 1);
-    if (state.currentIndex >= state.errors.length) {
+// ---------------------------------
+// 3) Reject one (clear & advance)
+// ---------------------------------
+export async function rejectCurrentChange() {
+  if (state.currentIndex >= state.errors.length) return;
+
+  try {
+    await Word.run(async context => {
+      const r = state.errors[state.currentIndex];
+      context.trackedObjects.add(r);
+
+      r.font.highlightColor = null;
+
+      state.currentIndex++;
+      if (state.currentIndex < state.errors.length) {
+        const nxt = state.errors[state.currentIndex];
+        context.trackedObjects.add(nxt);
+        nxt.select();
+      }
+
+      await context.sync();
+    });
+
+    // remove the one we skipped
+    state.errors.splice(state.currentIndex - 1, 1);
+    if (state.currentIndex > state.errors.length) {
       state.currentIndex = 0;
     }
-  })
-  .catch(error => {
-    console.error(error);
-  });
+  } catch (e) {
+    console.error(e);
+  }
 }
 
-function acceptAllChanges() {
-  console.log('acceptAllChanges()', { total: state.errors.length });
-  if (!state.errors || state.errors.length === 0) {
-    return;
-  }
-  Word.run(async context => {
-    console.log('inside acceptAllChanges Word.run');
-    // Load text for all error ranges to determine their current letters
-    for (let errorRange of state.errors) {
-      context.load(errorRange, 'text');
-    }
-    await context.sync();
-    // Replace all mismatched prepositions at once
-    for (let errorRange of state.errors) {
-      const wrongChar = errorRange.text || '';
-      let correctChar;
-      if (wrongChar === 's') correctChar = 'z';
-      else if (wrongChar === 'S') correctChar = 'Z';
-      else if (wrongChar === 'z') correctChar = 's';
-      else if (wrongChar === 'Z') correctChar = 'S';
-      else continue;  // skip if unexpected value
-      console.log(`Replacing '${wrongChar}' -> '${correctChar}'`);
-      errorRange.insertText(correctChar, Word.InsertLocation.replace);
-      errorRange.font.highlightColor = null;
-      // Stop tracking this range after replacement
-      context.trackedObjects.remove(errorRange);
-    }
-    await context.sync();
-  })
-  .then(() => {
-    // All errors fixed; clear the list and reset index
+// --------------------------------
+// 4) Accept All (bulk replace all)
+// --------------------------------
+export async function acceptAllChanges() {
+  if (!state.errors.length) return;
+
+  try {
+    await Word.run(async context => {
+      // load all texts
+      for (let r of state.errors) context.load(r, "text");
+      await context.sync();
+
+      // replace & clear all
+      for (let r of state.errors) {
+        const w = r.text;
+        const c =
+          w === "s" ? "z" :
+          w === "S" ? "Z" :
+          w === "z" ? "s" :
+          w === "Z" ? "S" :
+          w;
+        r.insertText(c, Word.InsertLocation.replace);
+        r.font.highlightColor = null;
+      }
+      await context.sync();
+    });
+
     state.errors = [];
     state.currentIndex = 0;
-  })
-  .catch(error => {
-    console.error(error);
-  });
+    showNotification(NOTIF_ID, {
+      type: "informationalMessage",
+      message: "Accepted all!",
+      icon: "Icon.80x80"
+    });
+  } catch (e) {
+    console.error(e);
+  }
 }
 
-function rejectAllChanges() {
-  console.log('rejectAllChanges()', { total: state.errors.length });
-  if (!state.errors || state.errors.length === 0) {
-    return;
-  }
-  Word.run(async context => {
-    console.log('inside rejectAllChanges Word.run');
-    // Remove highlights from all marked prepositions without changing text
-    for (let errorRange of state.errors) {
-      errorRange.font.highlightColor = null;
-      context.trackedObjects.remove(errorRange);
-    }
-    await context.sync();
-  })
-  .then(() => {
-    // Clear all errors and reset index since we've ignored all
+// ---------------------------------
+// 5) Reject All (bulk clear highlights)
+// ---------------------------------
+export async function rejectAllChanges() {
+  if (!state.errors.length) return;
+
+  try {
+    await Word.run(async context => {
+      for (let r of state.errors) {
+        r.font.highlightColor = null;
+      }
+      await context.sync();
+    });
+
     state.errors = [];
     state.currentIndex = 0;
-  })
-  .catch(error => {
-    console.error(error);
-  });
+    showNotification(NOTIF_ID, {
+      type: "informationalMessage",
+      message: "Cleared all!",
+      icon: "Icon.80x80"
+    });
+  } catch (e) {
+    console.error(e);
+  }
 }
+
