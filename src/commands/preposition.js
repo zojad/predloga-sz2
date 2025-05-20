@@ -87,11 +87,12 @@ export async function checkDocumentText() {
   }
 }
 
-// --- Accept one --- process first error, then re-run check ---
+// --- Accept one --- process first error and select next ---
 export async function acceptCurrentChange() {
   console.log('▶ acceptCurrentChange');
   if (!state.errors.length) return;
-  const err = state.errors[0];
+
+  const err = state.errors.shift();
   try {
     await Word.run(async context => {
       context.trackedObjects.add(err.range);
@@ -102,14 +103,29 @@ export async function acceptCurrentChange() {
   } catch (e) {
     console.error('acceptCurrentChange error', e);
   }
-  await checkDocumentText();
+
+  // select next if available
+  if (state.errors.length) {
+    try {
+      await Word.run(async context => {
+        const next = state.errors[0].range;
+        context.trackedObjects.add(next);
+        next.select(); await context.sync();
+      });
+    } catch (e) {
+      console.error('acceptCurrentChange select next error', e);
+    }
+  } else {
+    showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'All changes accepted!', icon: 'Icon.80x80' });
+  }
 }
 
-// --- Reject one --- clear first highlight, then re-run check ---
+// --- Reject one --- clear first highlight and select next ---
 export async function rejectCurrentChange() {
   console.log('▶ rejectCurrentChange');
   if (!state.errors.length) return;
-  const err = state.errors[0];
+
+  const err = state.errors.shift();
   try {
     await Word.run(async context => {
       context.trackedObjects.add(err.range);
@@ -119,42 +135,63 @@ export async function rejectCurrentChange() {
   } catch (e) {
     console.error('rejectCurrentChange error', e);
   }
-  await checkDocumentText();
+
+  if (state.errors.length) {
+    try {
+      await Word.run(async context => {
+        const next = state.errors[0].range;
+        context.trackedObjects.add(next);
+        next.select(); await context.sync();
+      });
+    } catch (e) {
+      console.error('rejectCurrentChange select next error', e);
+    }
+  } else {
+    showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'All highlights cleared!', icon: 'Icon.80x80' });
+  }
 }
 
-// --- Accept all --- apply all suggestions, then re-run check ---
+// --- Accept all --- apply all suggestions ---
 export async function acceptAllChanges() {
   console.log('▶ acceptAllChanges');
   if (!state.errors.length) return;
+
+  const errorsToAccept = state.errors.slice();
+  state.errors = [];
+
   try {
     await Word.run(async context => {
-      for (const err of state.errors) {
+      for (const err of errorsToAccept) {
         context.trackedObjects.add(err.range);
         err.range.insertText(err.suggestion, Word.InsertLocation.replace);
         err.range.font.highlightColor = null;
         await context.sync();
       }
     });
+    showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Accepted all!', icon: 'Icon.80x80' });
   } catch (e) {
     console.error('acceptAllChanges error', e);
   }
-  await checkDocumentText();
 }
 
-// --- Reject all --- clear all highlights, then re-run check ---
+// --- Reject all --- clear all highlights ---
 export async function rejectAllChanges() {
   console.log('▶ rejectAllChanges');
   if (!state.errors.length) return;
+
+  const errorsToClear = state.errors.slice();
+  state.errors = [];
+
   try {
     await Word.run(async context => {
-      for (const err of state.errors) {
+      for (const err of errorsToClear) {
         context.trackedObjects.add(err.range);
         err.range.font.highlightColor = null;
         await context.sync();
       }
     });
+    showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Cleared all!', icon: 'Icon.80x80' });
   } catch (e) {
     console.error('rejectAllChanges error', e);
   }
-  await checkDocumentText();
 }
