@@ -2,7 +2,6 @@
 
 let state = {
   errors: [],
-  currentIndex: 0,
   isChecking: false
 };
 
@@ -36,18 +35,18 @@ function determineCorrectPreposition(rawWord) {
 
 // --- CORE: find and highlight errors ---
 export async function checkDocumentText() {
-  console.log('▶ checkDocumentText()', state);
+  console.log('▶ checkDocumentText');
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async context => {
-      // reset
+      // clear old highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
-      state.currentIndex = 0;
 
+      // search standalone s/z
       const opts = { matchCase: false, matchWholeWord: true };
       const sRes = context.document.body.search('s', opts);
       const zRes = context.document.body.search('z', opts);
@@ -55,14 +54,10 @@ export async function checkDocumentText() {
       await context.sync();
 
       const all = [...sRes.items, ...zRes.items];
-      const cand = all.filter(r => ['s','z'].includes(r.text.trim().toLowerCase()));
-      console.log(`→ found ${cand.length} candidates`);
-
-      for (const prep of cand) {
+      for (const prep of all) {
         const after = prep.getRange('After');
         const nxtR = after.getNextTextRange([' ', '\n', '.', ',', ';', '?', '!'], true);
-        nxtR.load('text');
-        await context.sync();
+        nxtR.load('text'); await context.sync();
         const nxt = nxtR.text.trim();
         if (!nxt) continue;
         const actual = prep.text.trim().toLowerCase();
@@ -81,115 +76,85 @@ export async function checkDocumentText() {
         await context.sync();
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
-        first.select();
-        await context.sync();
+        first.select(); await context.sync();
       }
     });
   } catch (err) {
     console.error('checkDocumentText error', err);
     showNotification('checkError', { type: 'errorMessage', message: 'Check failed', persistent: false });
-  } finally { state.isChecking = false; }
+  } finally {
+    state.isChecking = false;
+  }
 }
 
-// --- Accept one -- replaces current and moves on ---
+// --- Accept one --- process first error, then re-run check ---
 export async function acceptCurrentChange() {
-  console.log('▶ acceptCurrentChange()', state.currentIndex, state.errors.length);
-  if (state.currentIndex >= state.errors.length) return;
-
+  console.log('▶ acceptCurrentChange');
+  if (!state.errors.length) return;
+  const err = state.errors[0];
   try {
     await Word.run(async context => {
-      console.log('→ acceptCurrentChange context start');
-      const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      err.range.select(); await context.sync();
-
-      // use selection proxy to replace
-      const sel = context.document.getSelection();
-      sel.load('text'); await context.sync();
-      console.log(`   replacing '${sel.text}' → '${err.suggestion}'`);
-      sel.insertText(err.suggestion, Word.InsertLocation.replace);
-      sel.font.highlightColor = null;
+      err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+      err.range.font.highlightColor = null;
       await context.sync();
-
-      // next
-      state.currentIndex++;
-      if (state.currentIndex < state.errors.length) {
-        const nxt = state.errors[state.currentIndex].range;
-        context.trackedObjects.add(nxt);
-        nxt.select(); await context.sync();
-      }
     });
-  } catch (err) { console.error('acceptCurrentChange error', err); }
+  } catch (e) {
+    console.error('acceptCurrentChange error', e);
+  }
+  await checkDocumentText();
 }
 
-// --- Reject one --- clears highlight and moves on ---
+// --- Reject one --- clear first highlight, then re-run check ---
 export async function rejectCurrentChange() {
-  console.log('▶ rejectCurrentChange()', state.currentIndex, state.errors.length);
-  if (state.currentIndex >= state.errors.length) return;
-
+  console.log('▶ rejectCurrentChange');
+  if (!state.errors.length) return;
+  const err = state.errors[0];
   try {
     await Word.run(async context => {
-      console.log('→ rejectCurrentChange context start');
-      const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      err.range.select(); await context.sync();
-      const sel = context.document.getSelection(); sel.load('text'); await context.sync();
-      console.log(`   clearing highlight for '${sel.text}'`);
-      sel.font.highlightColor = null;
+      err.range.font.highlightColor = null;
       await context.sync();
-      state.currentIndex++;
-      if (state.currentIndex < state.errors.length) {
-        const nxt = state.errors[state.currentIndex].range;
-        context.trackedObjects.add(nxt);
-        nxt.select(); await context.sync();
-      }
     });
-  } catch (err) { console.error('rejectCurrentChange error', err); }
+  } catch (e) {
+    console.error('rejectCurrentChange error', e);
+  }
+  await checkDocumentText();
 }
 
-// --- Accept all --- iterates through all ---
+// --- Accept all --- apply all suggestions, then re-run check ---
 export async function acceptAllChanges() {
-  console.log('▶ acceptAllChanges()', state.errors.length);
+  console.log('▶ acceptAllChanges');
   if (!state.errors.length) return;
-
   try {
     await Word.run(async context => {
-      console.log(`→ accepting all ${state.errors.length}`);
       for (const err of state.errors) {
         context.trackedObjects.add(err.range);
-        err.range.select(); await context.sync();
-        const sel = context.document.getSelection(); sel.load('text'); await context.sync();
-        console.log(`   replacing '${sel.text}' → '${err.suggestion}'`);
-        sel.insertText(err.suggestion, Word.InsertLocation.replace);
-        sel.font.highlightColor = null;
+        err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+        err.range.font.highlightColor = null;
         await context.sync();
       }
-      state.errors = [];
-      state.currentIndex = 0;
-      showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Accepted all!', icon: 'Icon.80x80' });
     });
-  } catch (err) { console.error('acceptAllChanges error', err); }
+  } catch (e) {
+    console.error('acceptAllChanges error', e);
+  }
+  await checkDocumentText();
 }
 
-// --- Reject all --- clears all highlights ---
+// --- Reject all --- clear all highlights, then re-run check ---
 export async function rejectAllChanges() {
-  console.log('▶ rejectAllChanges()', state.errors.length);
+  console.log('▶ rejectAllChanges');
   if (!state.errors.length) return;
-
   try {
     await Word.run(async context => {
-      console.log(`→ rejecting all ${state.errors.length}`);
       for (const err of state.errors) {
         context.trackedObjects.add(err.range);
-        err.range.select(); await context.sync();
-        const sel = context.document.getSelection(); sel.load('text'); await context.sync();
-        console.log(`   clearing highlight for '${sel.text}'`);
-        sel.font.highlightColor = null;
+        err.range.font.highlightColor = null;
         await context.sync();
       }
-      state.errors = [];
-      state.currentIndex = 0;
-      showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Cleared all!', icon: 'Icon.80x80' });
     });
-  } catch (err) { console.error('rejectAllChanges error', err); }
+  } catch (e) {
+    console.error('rejectAllChanges error', e);
+  }
+  await checkDocumentText();
 }
