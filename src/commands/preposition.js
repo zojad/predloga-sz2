@@ -88,9 +88,7 @@ export async function checkDocumentText() {
   } catch (err) {
     console.error('checkDocumentText error', err);
     showNotification('checkError', { type: 'errorMessage', message: 'Check failed', persistent: false });
-  } finally {
-    state.isChecking = false;
-  }
+  } finally { state.isChecking = false; }
 }
 
 // --- Accept one -- replaces current and moves on ---
@@ -100,28 +98,28 @@ export async function acceptCurrentChange() {
 
   try {
     await Word.run(async context => {
+      console.log('→ acceptCurrentChange context start');
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      err.range.select();
+      err.range.select(); await context.sync();
+
+      // use selection proxy to replace
+      const sel = context.document.getSelection();
+      sel.load('text'); await context.sync();
+      console.log(`   replacing '${sel.text}' → '${err.suggestion}'`);
+      sel.insertText(err.suggestion, Word.InsertLocation.replace);
+      sel.font.highlightColor = null;
       await context.sync();
 
-      // Replace preposition
-      err.range.insertText(err.suggestion, Word.InsertLocation.replace);
-      err.range.font.highlightColor = null;
-      await context.sync();
-
-      // advance and select next
+      // next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
-        const nextErr = state.errors[state.currentIndex];
-        context.trackedObjects.add(nextErr.range);
-        nextErr.range.select();
-        await context.sync();
+        const nxt = state.errors[state.currentIndex].range;
+        context.trackedObjects.add(nxt);
+        nxt.select(); await context.sync();
       }
     });
-  } catch (e) {
-    console.error('acceptCurrentChange error', e);
-  }
+  } catch (err) { console.error('acceptCurrentChange error', err); }
 }
 
 // --- Reject one --- clears highlight and moves on ---
@@ -131,27 +129,22 @@ export async function rejectCurrentChange() {
 
   try {
     await Word.run(async context => {
+      console.log('→ rejectCurrentChange context start');
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      err.range.select();
+      err.range.select(); await context.sync();
+      const sel = context.document.getSelection(); sel.load('text'); await context.sync();
+      console.log(`   clearing highlight for '${sel.text}'`);
+      sel.font.highlightColor = null;
       await context.sync();
-
-      // Clear highlight
-      err.range.font.highlightColor = null;
-      await context.sync();
-
-      // advance and select next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
-        const nextErr = state.errors[state.currentIndex];
-        context.trackedObjects.add(nextErr.range);
-        nextErr.range.select();
-        await context.sync();
+        const nxt = state.errors[state.currentIndex].range;
+        context.trackedObjects.add(nxt);
+        nxt.select(); await context.sync();
       }
     });
-  } catch (e) {
-    console.error('rejectCurrentChange error', e);
-  }
+  } catch (err) { console.error('rejectCurrentChange error', err); }
 }
 
 // --- Accept all --- iterates through all ---
@@ -164,20 +157,18 @@ export async function acceptAllChanges() {
       console.log(`→ accepting all ${state.errors.length}`);
       for (const err of state.errors) {
         context.trackedObjects.add(err.range);
-        err.range.select();
-        await context.sync();
-
-        err.range.insertText(err.suggestion, Word.InsertLocation.replace);
-        err.range.font.highlightColor = null;
+        err.range.select(); await context.sync();
+        const sel = context.document.getSelection(); sel.load('text'); await context.sync();
+        console.log(`   replacing '${sel.text}' → '${err.suggestion}'`);
+        sel.insertText(err.suggestion, Word.InsertLocation.replace);
+        sel.font.highlightColor = null;
         await context.sync();
       }
       state.errors = [];
       state.currentIndex = 0;
       showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Accepted all!', icon: 'Icon.80x80' });
     });
-  } catch (e) {
-    console.error('acceptAllChanges error', e);
-  }
+  } catch (err) { console.error('acceptAllChanges error', err); }
 }
 
 // --- Reject all --- clears all highlights ---
@@ -190,17 +181,15 @@ export async function rejectAllChanges() {
       console.log(`→ rejecting all ${state.errors.length}`);
       for (const err of state.errors) {
         context.trackedObjects.add(err.range);
-        err.range.select();
-        await context.sync();
-
-        err.range.font.highlightColor = null;
+        err.range.select(); await context.sync();
+        const sel = context.document.getSelection(); sel.load('text'); await context.sync();
+        console.log(`   clearing highlight for '${sel.text}'`);
+        sel.font.highlightColor = null;
         await context.sync();
       }
       state.errors = [];
       state.currentIndex = 0;
       showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Cleared all!', icon: 'Icon.80x80' });
     });
-  } catch (e) {
-    console.error('rejectAllChanges error', e);
-  }
+  } catch (err) { console.error('rejectAllChanges error', err); }
 }
