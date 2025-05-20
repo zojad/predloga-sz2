@@ -1,6 +1,6 @@
 /* global Office, Word */
 
-// In-memory state for mismatches
+// In‐memory state for mismatches
 const state = {
   errors: [],        // Array of { range: Word.Range, suggestion: "s"|"z" }
   currentIndex: 0,
@@ -46,14 +46,14 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      // 1. Clear old highlights
+      // Clear any old highlights
       state.errors.forEach(e => {
         context.trackedObjects.add(e.range);
         e.range.font.highlightColor = null;
       });
       await context.sync();
 
-      // 2. Find every standalone "s" or "z"
+      // Find all standalone "s" or "z"
       const opts = { matchWholeWord: true, matchCase: false };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
@@ -63,7 +63,7 @@ export async function checkDocumentText() {
       const candidates = [...sRes.items, ...zRes.items]
         .filter(r => ['s','z'].includes(r.text.trim().toLowerCase()));
 
-      // 3. For each, grab the next word and compare
+      // Evaluate each candidate
       for (const r of candidates) {
         const after = r.getRange("After")
                        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
@@ -108,9 +108,13 @@ export async function checkDocumentText() {
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept one: replace current & auto-advance
+// 2) Accept one: replace current & auto‐advance
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
+  console.log("▶ acceptCurrentChange() fired;", 
+    "errors:", state.errors.map(e => e.range.text),
+    "currentIndex:", state.currentIndex
+  );
   if (!state.errors.length) return;
 
   // Pull off the first mismatch
@@ -136,9 +140,13 @@ export async function acceptCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject one: clear current & auto-advance
+// 3) Reject one: clear current & auto‐advance
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
+  console.log("▶ rejectCurrentChange() fired;", 
+    "errors:", state.errors.map(e => e.range.text),
+    "currentIndex:", state.currentIndex
+  );
   if (!state.errors.length) return;
 
   // Drop the first mismatch
@@ -166,6 +174,9 @@ export async function rejectCurrentChange() {
 // 4) Accept all: replace every mismatch at once
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
+  console.log("▶ acceptAllChanges() fired;", 
+    "errors:", state.errors.map(e => e.range.text)
+  );
   if (!state.errors.length) return;
 
   await Word.run(async context => {
@@ -189,6 +200,9 @@ export async function acceptAllChanges() {
 // 5) Reject all: clear all highlights at once
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
+  console.log("▶ rejectAllChanges() fired;", 
+    "errors:", state.errors.map(e => e.range.text)
+  );
   if (!state.errors.length) return;
 
   await Word.run(async context => {
