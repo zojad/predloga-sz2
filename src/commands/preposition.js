@@ -7,7 +7,7 @@ let state = {
 };
 
 const HIGHLIGHT_COLOR = "#FFC0CB";
-const NOTIF_ID        = "noErrors";
+const NOTIF_ID = "noErrors";
 
 function clearNotification(id) {
   if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
@@ -23,17 +23,16 @@ function showNotification(id, options) {
 
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
-  const normalized = rawWord.normalize("NFC");
-  const match = normalized.match(/[\p{L}0-9]/u);
-  if (!match) return null;
-  const first = match[0].toLowerCase();
+  const w = rawWord.normalize("NFC");
+  const m = w.match(/[\p{L}0-9]/u);
+  if (!m) return null;
+  const first = m[0].toLowerCase();
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
   const numMap = {'1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'};
-
   if (/\d/.test(first)) {
-    return unvoiced.has(numMap[first]) ? "s" : "z";
+    return unvoiced.has(numMap[first]) ? 's' : 'z';
   }
-  return unvoiced.has(first) ? "s" : "z";
+  return unvoiced.has(first) ? 's' : 'z';
 }
 
 export async function checkDocumentText() {
@@ -44,63 +43,54 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      // Clear previous highlights
+      // clear previous highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
 
-      // Search for standalone 's' and 'z'
+      // search standalone 's' and 'z'
       const opts = { matchCase: false, matchWholeWord: true };
-      const sRes = context.document.body.search("s", opts);
-      const zRes = context.document.body.search("z", opts);
-      sRes.load("items");
-      zRes.load("items");
+      const sRes = context.document.body.search('s', opts);
+      const zRes = context.document.body.search('z', opts);
+      sRes.load('items'); zRes.load('items');
       await context.sync();
 
-      // Collect mismatches
+      // filter exact 's' or 'z'
       const candidates = [...sRes.items, ...zRes.items].filter(r => {
-        const txt = r.text.trim().toLowerCase();
-        return txt === 's' || txt === 'z';
+        const t = r.text.trim().toLowerCase();
+        return t === 's' || t === 'z';
       });
 
+      // check each candidate
       for (const prep of candidates) {
-        const after = prep.getRange("After");
-        const nextRange = after.getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
-        nextRange.load("text");
+        const after = prep.getRange('After');
+        const nxtRange = after.getNextTextRange([' ', '\n', '.', ',', ';', '?', '!'], true);
+        nxtRange.load('text');
         await context.sync();
-
-        const nextWord = nextRange.text.trim();
-        if (!nextWord) continue;
+        const nxt = nxtRange.text.trim();
+        if (!nxt) continue;
         const actual = prep.text.trim().toLowerCase();
-        const expect = determineCorrectPreposition(nextWord);
+        const expect = determineCorrectPreposition(nxt);
         if (expect && actual !== expect) {
           context.trackedObjects.add(prep);
           state.errors.push({ range: prep, suggestion: expect });
         }
       }
 
-      // Highlight and select first mismatch
-      if (state.errors.length > 0) {
+      if (state.errors.length === 0) {
+        showNotification(NOTIF_ID, { type: 'informationalMessage', message: "✨ No mismatches!", icon: 'Icon.80x80' });
+      } else {
+        // highlight all and select first
         state.errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
-        const firstRange = state.errors[0].range;
-        context.trackedObjects.add(firstRange);
-        firstRange.select();
+        const first = state.errors[0].range;
+        context.trackedObjects.add(first);
+        first.select();
         await context.sync();
-      } else {
-        showNotification(NOTIF_ID, {
-          type: "informationalMessage",
-          message: "✨ No 's'/'z' mismatches!",
-          icon: "Icon.80x80"
-        });
       }
     });
   } catch (e) {
-    console.error("checkDocumentText error", e);
-    showNotification("checkError", {
-      type: "errorMessage",
-      message: "Check failed; please try again.",
-      persistent: false
-    });
+    console.error('checkDocumentText error', e);
+    showNotification('checkError', { type: 'errorMessage', message: 'Check failed', persistent: false });
   } finally {
     state.isChecking = false;
   }
@@ -108,15 +98,14 @@ export async function checkDocumentText() {
 
 export async function acceptCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
+  const err = state.errors[state.currentIndex];
   try {
     await Word.run(async context => {
-      const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
       err.range.insertText(err.suggestion, Word.InsertLocation.replace);
       err.range.font.highlightColor = null;
       await context.sync();
-
-      // Advance index and select next
+      // advance and select next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         const nextErr = state.errors[state.currentIndex].range;
@@ -126,20 +115,19 @@ export async function acceptCurrentChange() {
       }
     });
   } catch (e) {
-    console.error("acceptCurrentChange error", e);
+    console.error('acceptCurrentChange error', e);
   }
 }
 
 export async function rejectCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
+  const err = state.errors[state.currentIndex];
   try {
     await Word.run(async context => {
-      const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
       err.range.font.highlightColor = null;
       await context.sync();
-
-      // Advance index and select next
+      // advance and select next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         const nextErr = state.errors[state.currentIndex].range;
@@ -149,7 +137,7 @@ export async function rejectCurrentChange() {
       }
     });
   } catch (e) {
-    console.error("rejectCurrentChange error", e);
+    console.error('rejectCurrentChange error', e);
   }
 }
 
@@ -166,7 +154,7 @@ export async function acceptAllChanges() {
       state.currentIndex = state.errors.length;
     });
   } catch (e) {
-    console.error("acceptAllChanges error", e);
+    console.error('acceptAllChanges error', e);
   }
 }
 
@@ -182,6 +170,6 @@ export async function rejectAllChanges() {
       state.currentIndex = state.errors.length;
     });
   } catch (e) {
-    console.error("rejectAllChanges error", e);
+    console.error('rejectAllChanges error', e);
   }
 }
