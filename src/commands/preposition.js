@@ -7,63 +7,65 @@ let state = {
 };
 
 const HIGHLIGHT_COLOR = "#FFC0CB";
-const NOTIF_ID = "noErrors";
+const NOTIF_ID        = "noErrors";
 
 function clearNotification(id) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
+  if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
 
 function showNotification(id, options) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
+  if (Office.NotificationMessages?.addAsync) {
     Office.NotificationMessages.addAsync(id, options);
   }
 }
 
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
-  const match = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
-  if (!match) return null;
-  const first = match[0].toLowerCase();
+  const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
+  if (!m) return null;
+  const first = m[0].toLowerCase();
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
-  const numMap = {'1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'};
-  return (/[0-9]/.test(first)
-    ? (unvoiced.has(numMap[first]) ? 's' : 'z')
-    : (unvoiced.has(first) ? 's' : 'z')
-  );
+  const numMap   = { '1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n' };
+  if (/\d/.test(first)) return unvoiced.has(numMap[first]) ? "s" : "z";
+  return unvoiced.has(first) ? "s" : "z";
 }
 
 // --- CORE: find and highlight errors ---
 export async function checkDocumentText() {
-  console.log('▶ checkDocumentText()', state);
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async context => {
-      // reset
+      // reset previous highlights & state
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
       const opts = { matchCase: false, matchWholeWord: true };
-      const sRes = context.document.body.search('s', opts);
-      const zRes = context.document.body.search('z', opts);
-      sRes.load('items'); zRes.load('items');
+      const sRes = context.document.body.search("s", opts);
+      const zRes = context.document.body.search("z", opts);
+      sRes.load("items");
+      zRes.load("items");
       await context.sync();
 
-      const all = [...sRes.items, ...zRes.items];
-      const cand = all.filter(r => ['s','z'].includes(r.text.trim().toLowerCase()));
-      console.log(`→ found ${cand.length} candidates`);
+      const all = [...sRes.items, ...zRes.items]
+        .filter(r => {
+          const t = r.text.trim().toLowerCase();
+          return t === "s" || t === "z";
+        });
 
-      for (const prep of cand) {
-        const after = prep.getRange('After');
-        const nxtR = after.getNextTextRange([' ', '\n', '.', ',', ';', '?', '!'], true);
-        nxtR.load('text');
+      for (const prep of all) {
+        const after = prep
+          .getRange("After")
+          .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+        after.load("text");
         await context.sync();
-        const nxt = nxtR.text.trim();
+
+        const nxt = after.text.trim();
         if (!nxt) continue;
         const actual = prep.text.trim().toLowerCase();
         const expect = determineCorrectPreposition(nxt);
@@ -73,10 +75,14 @@ export async function checkDocumentText() {
         }
       }
 
-      console.log(`→ mismatches: ${state.errors.length}`);
       if (!state.errors.length) {
-        showNotification(NOTIF_ID, { type: 'informationalMessage', message: "✨ No mismatches!", icon: 'Icon.80x80' });
+        showNotification(NOTIF_ID, {
+          type: "informationalMessage",
+          message: "✨ No mismatches!",
+          icon: "Icon.80x80"
+        });
       } else {
+        // highlight all and select the first one
         state.errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
         const first = state.errors[0].range;
@@ -85,111 +91,119 @@ export async function checkDocumentText() {
         await context.sync();
       }
     });
-  } catch (err) {
-    console.error('checkDocumentText error', err);
-    showNotification('checkError', { type: 'errorMessage', message: 'Check failed', persistent: false });
-  } finally { state.isChecking = false; }
+  } catch (e) {
+    console.error("checkDocumentText error", e);
+    showNotification(NOTIF_ID, {
+      type: "errorMessage",
+      message: "Check failed; please try again."
+    });
+  } finally {
+    state.isChecking = false;
+  }
 }
 
-// --- Accept one -- replaces current and moves on ---
+// --- Accept one: replace current and auto-advance ---
 export async function acceptCurrentChange() {
-  console.log('▶ acceptCurrentChange()', state.currentIndex, state.errors.length);
   if (state.currentIndex >= state.errors.length) return;
 
   try {
     await Word.run(async context => {
-      console.log('→ acceptCurrentChange context start');
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      err.range.select(); await context.sync();
 
-      // use selection proxy to replace
-      const sel = context.document.getSelection();
-      sel.load('text'); await context.sync();
-      console.log(`   replacing '${sel.text}' → '${err.suggestion}'`);
-      sel.insertText(err.suggestion, Word.InsertLocation.replace);
-      sel.font.highlightColor = null;
-      await context.sync();
+      // replace text and clear highlight
+      err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+      err.range.font.highlightColor = null;
 
-      // next
+      // advance to next and select it
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
-        const nxt = state.errors[state.currentIndex].range;
-        context.trackedObjects.add(nxt);
-        nxt.select(); await context.sync();
+        const next = state.errors[state.currentIndex].range;
+        context.trackedObjects.add(next);
+        next.select();
       }
+
+      await context.sync();
     });
-  } catch (err) { console.error('acceptCurrentChange error', err); }
+  } catch (e) {
+    console.error("acceptCurrentChange error", e);
+  }
 }
 
-// --- Reject one --- clears highlight and moves on ---
+// --- Reject one: clear highlight and auto-advance ---
 export async function rejectCurrentChange() {
-  console.log('▶ rejectCurrentChange()', state.currentIndex, state.errors.length);
   if (state.currentIndex >= state.errors.length) return;
 
   try {
     await Word.run(async context => {
-      console.log('→ rejectCurrentChange context start');
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      err.range.select(); await context.sync();
-      const sel = context.document.getSelection(); sel.load('text'); await context.sync();
-      console.log(`   clearing highlight for '${sel.text}'`);
-      sel.font.highlightColor = null;
-      await context.sync();
+
+      // clear highlight
+      err.range.font.highlightColor = null;
+
+      // advance to next and select it
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
-        const nxt = state.errors[state.currentIndex].range;
-        context.trackedObjects.add(nxt);
-        nxt.select(); await context.sync();
+        const next = state.errors[state.currentIndex].range;
+        context.trackedObjects.add(next);
+        next.select();
       }
+
+      await context.sync();
     });
-  } catch (err) { console.error('rejectCurrentChange error', err); }
+  } catch (e) {
+    console.error("rejectCurrentChange error", e);
+  }
 }
 
-// --- Accept all --- iterates through all ---
+// --- Accept all: replace every mismatch at once ---
 export async function acceptAllChanges() {
-  console.log('▶ acceptAllChanges()', state.errors.length);
   if (!state.errors.length) return;
 
   try {
     await Word.run(async context => {
-      console.log(`→ accepting all ${state.errors.length}`);
       for (const err of state.errors) {
         context.trackedObjects.add(err.range);
-        err.range.select(); await context.sync();
-        const sel = context.document.getSelection(); sel.load('text'); await context.sync();
-        console.log(`   replacing '${sel.text}' → '${err.suggestion}'`);
-        sel.insertText(err.suggestion, Word.InsertLocation.replace);
-        sel.font.highlightColor = null;
-        await context.sync();
+        err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+        err.range.font.highlightColor = null;
       }
-      state.errors = [];
-      state.currentIndex = 0;
-      showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Accepted all!', icon: 'Icon.80x80' });
+      await context.sync();
     });
-  } catch (err) { console.error('acceptAllChanges error', err); }
+
+    state.errors = [];
+    state.currentIndex = 0;
+    showNotification(NOTIF_ID, {
+      type: "informationalMessage",
+      message: "Accepted all mismatches!",
+      icon: "Icon.80x80"
+    });
+  } catch (e) {
+    console.error("acceptAllChanges error", e);
+  }
 }
 
-// --- Reject all --- clears all highlights ---
+// --- Reject all: clear all highlights at once ---
 export async function rejectAllChanges() {
-  console.log('▶ rejectAllChanges()', state.errors.length);
   if (!state.errors.length) return;
 
   try {
     await Word.run(async context => {
-      console.log(`→ rejecting all ${state.errors.length}`);
       for (const err of state.errors) {
         context.trackedObjects.add(err.range);
-        err.range.select(); await context.sync();
-        const sel = context.document.getSelection(); sel.load('text'); await context.sync();
-        console.log(`   clearing highlight for '${sel.text}'`);
-        sel.font.highlightColor = null;
-        await context.sync();
+        err.range.font.highlightColor = null;
       }
-      state.errors = [];
-      state.currentIndex = 0;
-      showNotification(NOTIF_ID, { type: 'informationalMessage', message: 'Cleared all!', icon: 'Icon.80x80' });
+      await context.sync();
     });
-  } catch (err) { console.error('rejectAllChanges error', err); }
+
+    state.errors = [];
+    state.currentIndex = 0;
+    showNotification(NOTIF_ID, {
+      type: "informationalMessage",
+      message: "Cleared all highlights!",
+      icon: "Icon.80x80"
+    });
+  } catch (e) {
+    console.error("rejectAllChanges error", e);
+  }
 }
