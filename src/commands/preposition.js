@@ -1,50 +1,50 @@
 /* global Office, Word */
 
-// –– State ––
+const HIGHLIGHT_COLOR = "#FFC0CB";
+const NOTIF_ID = "noErrors";
+
 let state = {
   errors: [],
   currentIndex: 0,
-  isChecking: false
+  isChecking: false,
 };
-
-const HIGHLIGHT_COLOR = "#FFC0CB";
-const NOTIF_ID        = "noErrors";
 
 // –– Helpers ––
 function clearNotification(id) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
+  if (Office?.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
 
 function showNotification(id, options) {
-  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
+  if (Office?.NotificationMessages?.addAsync) {
     Office.NotificationMessages.addAsync(id, options);
   }
 }
 
-// –– Core logic helper ––
+// –– Logic to choose correct “s” or “z” ––
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
+
   const word = rawWord.normalize("NFC");
   const match = word.match(/[\p{L}0-9]/u);
   if (!match) return null;
-  const first = match[0].toLowerCase();
 
-  const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
-  const numMap   = {
-    '1':'e','2':'d','3':'t','4':'š','5':'p',
-    '6':'š','7':'s','8':'o','9':'d','0':'n'
+  const first = match[0].toLowerCase();
+  const unvoiced = new Set(["c", "č", "f", "h", "k", "p", "s", "š", "t"]);
+  const numMap = {
+    "1": "e", "2": "d", "3": "t", "4": "š", "5": "p",
+    "6": "š", "7": "s", "8": "o", "9": "d", "0": "n"
   };
 
   if (/\d/.test(first)) {
     return unvoiced.has(numMap[first]) ? "s" : "z";
   }
+
   return unvoiced.has(first) ? "s" : "z";
 }
 
-// –– Exposed commands ––//
-
+// –– Main Command ––
 export async function checkDocumentText() {
   console.log("▶ checkDocumentText()", state);
   if (state.isChecking) return;
@@ -53,50 +53,63 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      console.log("→ Word.run(start)");
-
-      // clear any prior highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // do two whole-word searches: “s” and “z”
       const opts = { matchCase: false, matchWholeWord: true };
-      const sSearch = context.document.body.search("s", opts);
-      const zSearch = context.document.body.search("z", opts);
-      sSearch.load("items");
-      zSearch.load("items");
+      const allRanges = [];
+
+      async function find(scope) {
+        const s = scope.search("s", opts);
+        const z = scope.search("z", opts);
+        s.load("items"); z.load("items");
+        await context.sync();
+        allRanges.push(...s.items, ...z.items);
+      }
+
+      // Scan body
+      await find(context.document.body);
+
+      // Scan all table cells
+      const tables = context.document.body.tables;
+      tables.load("items");
       await context.sync();
 
-      const allRanges = [...sSearch.items, ...zSearch.items];
-      console.log("→ raw hits:", allRanges.length);
+      for (const table of tables.items) {
+        for (let r = 0; r < table.rowCount; r++) {
+          for (let c = 0; c < table.columnCount; c++) {
+            const cell = table.getCell(r, c);
+            await find(cell.body);
+          }
+        }
+      }
 
-      // filter down to exact lowercase “s” or “z”
       const candidates = allRanges.filter(r =>
-        ["s","z"].includes(r.text.trim().toLowerCase())
+        ["s", "z"].includes(r.text.trim().toLowerCase())
       );
-      console.log("→ filtered candidates:", candidates.length);
 
-      // now inspect each candidate
+      console.log(`→ found ${candidates.length} s/z candidates`);
+
       const errors = [];
+
       for (let prep of candidates) {
         const after = prep.getRange(Word.RangeLocation.After);
         after.expandTo(Word.TextRangeUnit.Word);
         after.load("text");
         await context.sync();
 
-        const nextWord = after.text.trim();
-        if (!nextWord) continue;
-
+        const nextWord = after.text.replace(/^[\s.,;:!?]+/, "").trim();
         const actual = prep.text.trim().toLowerCase();
-        const expect = determineCorrectPreposition(nextWord);
-        if (expect && actual !== expect) {
-          errors.push({ range: prep, suggestion: expect });
+        const expected = determineCorrectPreposition(nextWord);
+
+        if (expected && actual !== expected) {
+          errors.push({ range: prep, suggestion: expected });
         }
       }
 
       state.errors = errors;
-      console.log("→ mismatches found:", errors.length);
+      console.log(`→ mismatches found: ${errors.length}`);
 
       if (!errors.length) {
         showNotification(NOTIF_ID, {
@@ -106,7 +119,6 @@ export async function checkDocumentText() {
           persistent: false
         });
       } else {
-        // highlight and select the first one
         errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
         errors[0].range.select();
@@ -124,8 +136,9 @@ export async function checkDocumentText() {
   }
 }
 
+// –– Accept/Reject Commands ––
 export async function acceptCurrentChange() {
-  console.log("▶ acceptCurrentChange()", state.currentIndex, "of", state.errors.length);
+  console.log("▶ acceptCurrentChange()", state.currentIndex, state.errors.length);
   if (state.currentIndex >= state.errors.length) return;
 
   try {
@@ -139,15 +152,9 @@ export async function acceptCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
-      console.log("→ moved to index", state.currentIndex);
     });
   } catch (e) {
     console.error("acceptCurrentChange error", e);
-    showNotification("acceptError", {
-      type: "errorMessage",
-      message: "Failed to apply change. Please re-run the check.",
-      persistent: false
-    });
   }
 }
 
@@ -165,15 +172,9 @@ export async function rejectCurrentChange() {
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
       }
-      console.log("→ moved to index", state.currentIndex);
     });
   } catch (e) {
     console.error("rejectCurrentChange error", e);
-    showNotification("rejectError", {
-      type: "errorMessage",
-      message: "Failed to reject change. Please re-run the check.",
-      persistent: false
-    });
   }
 }
 
@@ -189,15 +190,9 @@ export async function acceptAllChanges() {
       }
       await context.sync();
       state.errors = [];
-      console.log("→ accepted all");
     });
   } catch (e) {
     console.error("acceptAllChanges error", e);
-    showNotification("acceptAllError", {
-      type: "errorMessage",
-      message: "Failed to apply all changes. Please try again.",
-      persistent: false
-    });
   }
 }
 
@@ -207,17 +202,13 @@ export async function rejectAllChanges() {
 
   try {
     await Word.run(async context => {
-      state.errors.forEach(e => e.range.font.highlightColor = null);
+      for (const err of state.errors) {
+        err.range.font.highlightColor = null;
+      }
       await context.sync();
       state.errors = [];
-      console.log("→ rejected all");
     });
   } catch (e) {
     console.error("rejectAllChanges error", e);
-    showNotification("rejectAllError", {
-      type: "errorMessage",
-      message: "Failed to clear changes. Please try again.",
-      persistent: false
-    });
   }
 }
