@@ -49,12 +49,12 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run(start)");
 
-      // Clear previous highlights
+      // clear any previous highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
 
-      // Find every standalone "s" or "z"
+      // find every standalone "s" or "z"
       const opts    = { matchCase: false, matchWholeWord: true };
       const sSearch = context.document.body.search("s", opts);
       const zSearch = context.document.body.search("z", opts);
@@ -62,16 +62,16 @@ export async function checkDocumentText() {
       zSearch.load("items");
       await context.sync();
 
-      const allRanges = [...sSearch.items, ...zSearch.items]
-      const candidates = allRanges.filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
+      const allRanges   = [...sSearch.items, ...zSearch.items];
+      const candidates  = allRanges.filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
       console.log("→ found", candidates.length, "s/z candidates");
 
       const errors = [];
       for (const prep of candidates) {
-        // get a zero-length range just after the preposition
+        // get a zero-length range right after the "s" or "z"
         const after = prep.getRange("After");
 
-        // EXPAND it to include the very next word (up to space or punctuation)
+        // expand it to capture the next word up to whitespace/punctuation
         const nextWordRange = after.getNextTextRange(
           [" ", "\n", ".", ",", ";", "?", "!"], /* trimSpacing= */ true
         );
@@ -84,6 +84,8 @@ export async function checkDocumentText() {
         const actual = prep.text.trim().toLowerCase();
         const expect = determineCorrectPreposition(nextWord);
         if (expect && actual !== expect) {
+          // *track* this Range so later batches can modify it
+          context.trackedObjects.add(prep);
           errors.push({ range: prep, suggestion: expect });
         }
       }
