@@ -23,18 +23,15 @@ function showNotification(id, options) {
 
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
-  const word = rawWord.normalize("NFC");
-  const match = word.match(/[\p{L}0-9]/u);
+  const match = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
   if (!match) return null;
   const first = match[0].toLowerCase();
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
-  const numMap = {
-    '1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'
-  };
-  if (/\d/.test(first)) {
-    return unvoiced.has(numMap[first]) ? "s" : "z";
-  }
-  return unvoiced.has(first) ? "s" : "z";
+  const numMap = {'1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'};
+  return (/[0-9]/.test(first)
+    ? (unvoiced.has(numMap[first]) ? 's' : 'z')
+    : (unvoiced.has(first) ? 's' : 'z')
+  );
 }
 
 export async function checkDocumentText() {
@@ -42,13 +39,14 @@ export async function checkDocumentText() {
   state.isChecking = true;
   clearNotification(NOTIF_ID);
   state.currentIndex = 0;
+
   try {
     await Word.run(async context => {
-      // clear old highlights
+      // Clear previous highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
 
-      // search 's' and 'z'
+      // Search for standalone 's' and 'z'
       const opts = { matchCase: false, matchWholeWord: true };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
@@ -61,6 +59,7 @@ export async function checkDocumentText() {
         const nextRange = after.getNextTextRange([" ","\n",".",",",";","?","!"], true);
         nextRange.load("text");
         await context.sync();
+
         const nxt = nextRange.text.trim();
         if (!nxt) continue;
         const actual = prep.text.trim().toLowerCase();
@@ -71,20 +70,21 @@ export async function checkDocumentText() {
         }
       }
 
-      if (state.errors.length === 0) {
-        showNotification(NOTIF_ID, { type: "informationalMessage", message: "✨ No mismatches!", icon: "Icon.80x80" });
-      } else {
+      // Highlight and select first
+      if (state.errors.length) {
         state.errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
         first.select();
         await context.sync();
+      } else {
+        showNotification(NOTIF_ID, { type: 'informationalMessage', message: "✨ No mismatches!", icon: 'Icon.80x80' });
       }
     });
   } catch (e) {
     console.error("checkDocumentText error", e);
-    showNotification("checkError", { type: "errorMessage", message: "Check failed", persistent: false });
+    showNotification("checkError", { type: 'errorMessage', message: 'Check failed', persistent: false });
   } finally {
     state.isChecking = false;
   }
@@ -96,12 +96,15 @@ export async function acceptCurrentChange() {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
+      // Replace and clear highlight
       err.range.insertText(err.suggestion, Word.InsertLocation.replace);
       err.range.font.highlightColor = null;
       await context.sync();
 
-      // advance and select
+      // Advance index
       state.currentIndex++;
+
+      // Select next, if any
       if (state.currentIndex < state.errors.length) {
         const nextErr = state.errors[state.currentIndex];
         context.trackedObjects.add(nextErr.range);
@@ -120,11 +123,14 @@ export async function rejectCurrentChange() {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
+      // Clear highlight
       err.range.font.highlightColor = null;
       await context.sync();
 
-      // advance and select
+      // Advance index
       state.currentIndex++;
+
+      // Select next, if any
       if (state.currentIndex < state.errors.length) {
         const nextErr = state.errors[state.currentIndex];
         context.trackedObjects.add(nextErr.range);
