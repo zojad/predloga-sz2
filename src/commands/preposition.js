@@ -125,9 +125,12 @@ export async function acceptCurrentChange() {
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
-      err.range.insertText(err.suggestion, Word.InsertLocation.replace);
-      err.range.font.highlightColor = null;
+      const sel = context.document.getSelection();
+      console.log(`🔁 Replacing "${sel.text}" → "${err.suggestion}"`);
+      sel.insertText(err.suggestion, Word.InsertLocation.replace);
+      sel.font.highlightColor = null;
       await context.sync();
+
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
@@ -143,9 +146,10 @@ export async function rejectCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
   try {
     await Word.run(async context => {
-      const err = state.errors[state.currentIndex];
-      err.range.font.highlightColor = null;
+      const sel = context.document.getSelection();
+      sel.font.highlightColor = null;
       await context.sync();
+
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
         state.errors[state.currentIndex].range.select();
@@ -161,8 +165,9 @@ export async function acceptAllChanges() {
   try {
     await Word.run(async context => {
       for (const err of state.errors) {
-        err.range.insertText(err.suggestion, Word.InsertLocation.replace);
-        err.range.font.highlightColor = null;
+        const sel = err.range;
+        sel.insertText(err.suggestion, Word.InsertLocation.replace);
+        sel.font.highlightColor = null;
       }
       await context.sync();
       state.errors = [];
