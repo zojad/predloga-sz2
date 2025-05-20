@@ -49,7 +49,7 @@ export async function checkDocumentText() {
     await Word.run(async context => {
       console.log("→ Word.run(start)");
 
-      // clear any previous highlights
+      // clear previous highlights
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
@@ -62,8 +62,8 @@ export async function checkDocumentText() {
       zSearch.load("items");
       await context.sync();
 
-      const allRanges   = [...sSearch.items, ...zSearch.items];
-      const candidates  = allRanges.filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
+      const allRanges  = [...sSearch.items, ...zSearch.items];
+      const candidates = allRanges.filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
       console.log("→ found", candidates.length, "s/z candidates");
 
       const errors = [];
@@ -84,7 +84,7 @@ export async function checkDocumentText() {
         const actual = prep.text.trim().toLowerCase();
         const expect = determineCorrectPreposition(nextWord);
         if (expect && actual !== expect) {
-          // *track* this Range so later batches can modify it
+          // track this Range so later batches can modify it
           context.trackedObjects.add(prep);
           errors.push({ range: prep, suggestion: expect });
         }
@@ -120,6 +120,7 @@ export async function checkDocumentText() {
 }
 
 export async function acceptCurrentChange() {
+  console.log("▶ acceptCurrentChange()", { currentIndex: state.currentIndex, errors: state.errors.length });
   if (state.currentIndex >= state.errors.length) return;
   try {
     await Word.run(async context => {
@@ -138,6 +139,7 @@ export async function acceptCurrentChange() {
 }
 
 export async function rejectCurrentChange() {
+  console.log("▶ rejectCurrentChange()", { currentIndex: state.currentIndex, errors: state.errors.length });
   if (state.currentIndex >= state.errors.length) return;
   try {
     await Word.run(async context => {

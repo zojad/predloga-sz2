@@ -15,11 +15,32 @@ Office.onReady(info => {
 
   if (info.host === Office.HostType.Word) {
     console.log("🔗 Associating actions…");
-    Office.actions.associate("checkDocumentText",   checkDocumentText);
-    Office.actions.associate("acceptCurrentChange", acceptCurrentChange);
-    Office.actions.associate("rejectCurrentChange", rejectCurrentChange);
-    Office.actions.associate("acceptAllChanges",    acceptAllChanges);
-    Office.actions.associate("rejectAllChanges",    rejectAllChanges);
+
+    Office.actions.associate("checkDocumentText",   (...args) => {
+      console.log("▶️ OfficeAction invoked: checkDocumentText", args);
+      return checkDocumentText(...args);
+    });
+
+    Office.actions.associate("acceptCurrentChange", (...args) => {
+      console.log("▶️ OfficeAction invoked: acceptCurrentChange", args);
+      return acceptCurrentChange(...args);
+    });
+
+    Office.actions.associate("rejectCurrentChange", (...args) => {
+      console.log("▶️ OfficeAction invoked: rejectCurrentChange", args);
+      return rejectCurrentChange(...args);
+    });
+
+    Office.actions.associate("acceptAllChanges",    (...args) => {
+      console.log("▶️ OfficeAction invoked: acceptAllChanges", args);
+      return acceptAllChanges(...args);
+    });
+
+    Office.actions.associate("rejectAllChanges",    (...args) => {
+      console.log("▶️ OfficeAction invoked: rejectAllChanges", args);
+      return rejectAllChanges(...args);
+    });
+
     console.log("✅ Actions associated");
   }
 });
