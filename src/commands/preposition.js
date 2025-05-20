@@ -10,13 +10,13 @@ const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
 function clearNotification(id) {
-  if (Office.NotificationMessages?.deleteAsync) {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
 
 function showNotification(id, options) {
-  if (Office.NotificationMessages?.addAsync) {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
     Office.NotificationMessages.addAsync(id, options);
   }
 }
@@ -29,9 +29,8 @@ function determineCorrectPreposition(rawWord) {
   const first = match[0].toLowerCase();
 
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
-  const numMap = {
-    '1': 'e', '2': 'd', '3': 't', '4': 'š', '5': 'p',
-    '6': 'š', '7': 's', '8': 'o', '9': 'd', '0': 'n'
+  const numMap   = {
+    '1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'
   };
 
   if (/\d/.test(first)) {
@@ -64,20 +63,22 @@ export async function checkDocumentText() {
       const allRanges = [...sSearch.items, ...zSearch.items];
       console.log("→ found", allRanges.length, "s/z candidates");
 
-      const candidates = allRanges.filter(r => ["s", "z"].includes(r.text.trim().toLowerCase()));
-      const errors = [];
+      const candidates = allRanges.filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
 
+      const errors = [];
       for (const prep of candidates) {
         const after = prep.getRange("After");
-        const nextWords = after.getTextRanges([" "], true); // Split by space, trim=true
-        nextWords.load("items");
+        after.load("text");
         await context.sync();
 
-        const nextWord = nextWords.items[0]?.text.trim();
-        if (!nextWord) continue;
+        const text = after.text.trim();
+        const match = text.match(/^\s*([^\s.,;!?]+)/);
+        if (!match) continue;
 
+        const nextWord = match[1];
         const actual = prep.text.trim().toLowerCase();
         const expect = determineCorrectPreposition(nextWord);
+
         if (expect && actual !== expect) {
           errors.push({ range: prep, suggestion: expect });
         }
@@ -89,7 +90,7 @@ export async function checkDocumentText() {
       if (!errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
-          message: "🎉 No 's'/'z' mismatches!",
+          message: "✨ No 's'/'z' mismatches!",
           icon: "Icon.80x80",
           persistent: false
         });
@@ -176,4 +177,3 @@ export async function rejectAllChanges() {
     console.error("rejectAllChanges error", e);
   }
 }
-
