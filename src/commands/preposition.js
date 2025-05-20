@@ -7,7 +7,7 @@ let state = {
 };
 
 const HIGHLIGHT_COLOR = "#FFC0CB";
-const NOTIF_ID = "noErrors";
+const NOTIF_ID        = "noErrors";
 
 function clearNotification(id) {
   if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
@@ -23,15 +23,17 @@ function showNotification(id, options) {
 
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
-  const match = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
+  const normalized = rawWord.normalize("NFC");
+  const match = normalized.match(/[\p{L}0-9]/u);
   if (!match) return null;
   const first = match[0].toLowerCase();
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
   const numMap = {'1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'};
-  return (/[0-9]/.test(first)
-    ? (unvoiced.has(numMap[first]) ? 's' : 'z')
-    : (unvoiced.has(first) ? 's' : 'z')
-  );
+
+  if (/\d/.test(first)) {
+    return unvoiced.has(numMap[first]) ? "s" : "z";
+  }
+  return unvoiced.has(first) ? "s" : "z";
 }
 
 export async function checkDocumentText() {
@@ -50,41 +52,55 @@ export async function checkDocumentText() {
       const opts = { matchCase: false, matchWholeWord: true };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
-      sRes.load("items"); zRes.load("items");
+      sRes.load("items");
+      zRes.load("items");
       await context.sync();
 
-      const all = [...sRes.items, ...zRes.items];
-      for (const prep of all) {
+      // Collect mismatches
+      const candidates = [...sRes.items, ...zRes.items].filter(r => {
+        const txt = r.text.trim().toLowerCase();
+        return txt === 's' || txt === 'z';
+      });
+
+      for (const prep of candidates) {
         const after = prep.getRange("After");
-        const nextRange = after.getNextTextRange([" ","\n",".",",",";","?","!"], true);
+        const nextRange = after.getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
         nextRange.load("text");
         await context.sync();
 
-        const nxt = nextRange.text.trim();
-        if (!nxt) continue;
+        const nextWord = nextRange.text.trim();
+        if (!nextWord) continue;
         const actual = prep.text.trim().toLowerCase();
-        const expect = determineCorrectPreposition(nxt);
+        const expect = determineCorrectPreposition(nextWord);
         if (expect && actual !== expect) {
           context.trackedObjects.add(prep);
           state.errors.push({ range: prep, suggestion: expect });
         }
       }
 
-      // Highlight and select first
-      if (state.errors.length) {
+      // Highlight and select first mismatch
+      if (state.errors.length > 0) {
         state.errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
-        const first = state.errors[0].range;
-        context.trackedObjects.add(first);
-        first.select();
+        const firstRange = state.errors[0].range;
+        context.trackedObjects.add(firstRange);
+        firstRange.select();
         await context.sync();
       } else {
-        showNotification(NOTIF_ID, { type: 'informationalMessage', message: "✨ No mismatches!", icon: 'Icon.80x80' });
+        showNotification(NOTIF_ID, {
+          type: "informationalMessage",
+          message: "✨ No 's'/'z' mismatches!",
+          icon: "Icon.80x80"
+        });
       }
     });
   } catch (e) {
     console.error("checkDocumentText error", e);
-    showNotification("checkError", { type: 'errorMessage', message: 'Check failed', persistent: false });
+    showNotification("checkError", {
+      type: "errorMessage",
+      message: "Check failed; please try again.",
+      persistent: false
+    });
   } finally {
     state.isChecking = false;
   }
@@ -96,19 +112,16 @@ export async function acceptCurrentChange() {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      // Replace and clear highlight
       err.range.insertText(err.suggestion, Word.InsertLocation.replace);
       err.range.font.highlightColor = null;
       await context.sync();
 
-      // Advance index
+      // Advance index and select next
       state.currentIndex++;
-
-      // Select next, if any
       if (state.currentIndex < state.errors.length) {
-        const nextErr = state.errors[state.currentIndex];
-        context.trackedObjects.add(nextErr.range);
-        nextErr.range.select();
+        const nextErr = state.errors[state.currentIndex].range;
+        context.trackedObjects.add(nextErr);
+        nextErr.select();
         await context.sync();
       }
     });
@@ -123,18 +136,15 @@ export async function rejectCurrentChange() {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
       context.trackedObjects.add(err.range);
-      // Clear highlight
       err.range.font.highlightColor = null;
       await context.sync();
 
-      // Advance index
+      // Advance index and select next
       state.currentIndex++;
-
-      // Select next, if any
       if (state.currentIndex < state.errors.length) {
-        const nextErr = state.errors[state.currentIndex];
-        context.trackedObjects.add(nextErr.range);
-        nextErr.range.select();
+        const nextErr = state.errors[state.currentIndex].range;
+        context.trackedObjects.add(nextErr);
+        nextErr.select();
         await context.sync();
       }
     });
@@ -144,7 +154,7 @@ export async function rejectCurrentChange() {
 }
 
 export async function acceptAllChanges() {
-  if (!state.errors.length) return;
+  if (state.errors.length === 0) return;
   try {
     await Word.run(async context => {
       for (const err of state.errors) {
@@ -161,7 +171,7 @@ export async function acceptAllChanges() {
 }
 
 export async function rejectAllChanges() {
-  if (!state.errors.length) return;
+  if (state.errors.length === 0) return;
   try {
     await Word.run(async context => {
       for (const err of state.errors) {
