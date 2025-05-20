@@ -47,7 +47,7 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      // reset
+      // reset previous state
       state.errors.forEach(e => e.range.font.highlightColor = null);
       state.errors = [];
       state.currentIndex = 0;
@@ -91,8 +91,10 @@ export async function checkDocumentText() {
           persistent: false
         });
       } else {
+        // highlight all and select first
         errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
+        context.trackedObjects.add(errors[0].range);
         errors[0].range.select();
         await context.sync();
       }
@@ -116,6 +118,7 @@ export async function acceptCurrentChange() {
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
+      context.trackedObjects.add(err.range);
       err.range.select();
       await context.sync();
 
@@ -124,10 +127,12 @@ export async function acceptCurrentChange() {
       err.range.font.highlightColor = null;
       await context.sync();
 
-      // advance
+      // advance and select next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
-        state.errors[state.currentIndex].range.select();
+        const nextErr = state.errors[state.currentIndex];
+        context.trackedObjects.add(nextErr.range);
+        nextErr.range.select();
         await context.sync();
       }
     });
@@ -143,6 +148,7 @@ export async function rejectCurrentChange() {
   try {
     await Word.run(async context => {
       const err = state.errors[state.currentIndex];
+      context.trackedObjects.add(err.range);
       err.range.select();
       await context.sync();
 
@@ -150,9 +156,12 @@ export async function rejectCurrentChange() {
       err.range.font.highlightColor = null;
       await context.sync();
 
+      // advance and select next
       state.currentIndex++;
       if (state.currentIndex < state.errors.length) {
-        state.errors[state.currentIndex].range.select();
+        const nextErr = state.errors[state.currentIndex];
+        context.trackedObjects.add(nextErr.range);
+        nextErr.range.select();
         await context.sync();
       }
     });
@@ -169,8 +178,10 @@ export async function acceptAllChanges() {
     await Word.run(async context => {
       console.log(`→ applying acceptAll to ${state.errors.length} items`);
       for (const err of state.errors) {
+        context.trackedObjects.add(err.range);
         err.range.select();
         await context.sync();
+
         err.range.insertText(err.suggestion, Word.InsertLocation.replace);
         err.range.font.highlightColor = null;
         await context.sync();
@@ -197,8 +208,10 @@ export async function rejectAllChanges() {
     await Word.run(async context => {
       console.log(`→ applying rejectAll to ${state.errors.length} items`);
       for (const err of state.errors) {
+        context.trackedObjects.add(err.range);
         err.range.select();
         await context.sync();
+
         err.range.font.highlightColor = null;
         await context.sync();
       }
