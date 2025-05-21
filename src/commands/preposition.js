@@ -9,7 +9,7 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// Helpers for ribbon notifications
+// Ribbon notification helpers
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -21,7 +21,7 @@ function showNotification(id, opts) {
   }
 }
 
-// Decide “s” vs “z” from the first letter of the next word
+// Decide whether the next word wants "s" or "z"
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
@@ -34,20 +34,20 @@ function determineCorrectPreposition(rawWord) {
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z: highlight all mismatches & select the first
+// 1) Check S/Z: highlight all mismatches & select first
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
 
-  // reset state
+  // reset our queue
   state.errors = [];
   state.currentIndex = 0;
 
   try {
     await Word.run(async context => {
-      // 1. Clear any old highlights
+      // Clear any old highlights
       const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       oldS.load("items"); oldZ.load("items");
@@ -55,13 +55,13 @@ export async function checkDocumentText() {
       [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
       await context.sync();
 
-      // 2. Find standalone "s" and "z"
+      // Find standalone "s" and "z"
       const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // 3. Evaluate each candidate
+      // Evaluate each candidate
       for (const r of [...sRes.items, ...zRes.items]) {
         const t = r.text.trim().toLowerCase();
         if (t !== "s" && t !== "z") continue;
@@ -112,7 +112,7 @@ export async function checkDocumentText() {
 export async function acceptCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
 
-  // pull out the current mismatch
+  // Pull out the current mismatch
   const { range, suggestion } = state.errors.splice(state.currentIndex, 1)[0];
 
   // Step 1: replace & clear highlight
@@ -123,7 +123,7 @@ export async function acceptCurrentChange() {
     await context.sync();
   });
 
-  // Step 2: select the next mismatch (if any)
+  // Step 2: select next mismatch (if any)
   if (state.currentIndex < state.errors.length) {
     await Word.run(async context => {
       const next = state.errors[state.currentIndex].range;
@@ -140,7 +140,7 @@ export async function acceptCurrentChange() {
 export async function rejectCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
 
-  // remove the current mismatch from queue
+  // Remove current mismatch from queue
   const { range } = state.errors.splice(state.currentIndex, 1)[0];
 
   // Step 1: clear highlight
@@ -150,7 +150,7 @@ export async function rejectCurrentChange() {
     await context.sync();
   });
 
-  // Step 2: select the next mismatch (if any)
+  // Step 2: select next mismatch (if any)
   if (state.currentIndex < state.errors.length) {
     await Word.run(async context => {
       const next = state.errors[state.currentIndex].range;
@@ -162,27 +162,42 @@ export async function rejectCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: repopulate if empty, then replace all
+// 4) Accept All: fresh search + replace every mismatch
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
-  // if nothing queued, do a fresh check to pick up any missed
-  if (!state.errors.length) {
-    await checkDocumentText();
-  }
-  if (!state.errors.length) return;
+  clearNotification(NOTIF_ID);
 
   await Word.run(async context => {
-    for (const { range, suggestion } of state.errors) {
-      context.trackedObjects.add(range);
-      range.insertText(suggestion, Word.InsertLocation.replace);
-      range.font.highlightColor = null;
+    const opts = { matchWholeWord: true, matchCase: false };
+    const sRes = context.document.body.search("s", opts);
+    const zRes = context.document.body.search("z", opts);
+    sRes.load("items"); zRes.load("items");
+    await context.sync();
+
+    for (const r of [...sRes.items, ...zRes.items]) {
+      const t = r.text.trim().toLowerCase();
+      if (t !== "s" && t !== "z") continue;
+
+      const after = r.getRange("After")
+                     .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+      after.load("text");
+      await context.sync();
+
+      const nxt = after.text.trim();
+      const expected = determineCorrectPreposition(nxt);
+      if (expected && expected !== t) {
+        r.insertText(expected, Word.InsertLocation.replace);
+        r.font.highlightColor = null;
+      }
     }
+
     await context.sync();
   });
 
-  // reset queue
+  // Reset queue
   state.errors = [];
   state.currentIndex = 0;
+
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Accepted all!",
@@ -191,26 +206,31 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: repopulate if empty, then clear all
+// 5) Reject All: fresh search + clear every highlight
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
-  // if nothing queued, do a fresh check
-  if (!state.errors.length) {
-    await checkDocumentText();
-  }
-  if (!state.errors.length) return;
+  clearNotification(NOTIF_ID);
 
   await Word.run(async context => {
-    for (const { range } of state.errors) {
-      context.trackedObjects.add(range);
-      range.font.highlightColor = null;
+    const opts = { matchWholeWord: true, matchCase: false };
+    const sRes = context.document.body.search("s", opts);
+    const zRes = context.document.body.search("z", opts);
+    sRes.load("items"); zRes.load("items");
+    await context.sync();
+
+    for (const r of [...sRes.items, ...zRes.items]) {
+      const t = r.text.trim().toLowerCase();
+      if (t === "s" || t === "z") {
+        r.font.highlightColor = null;
+      }
     }
+
     await context.sync();
   });
 
-  // reset queue
   state.errors = [];
   state.currentIndex = 0;
+
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Cleared all!",
