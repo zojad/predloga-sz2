@@ -1,13 +1,14 @@
 /* global Office, Word */
 
 let state = {
-  errors: [],        // { range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }[]
-  isChecking: false
+  errors: [],        // Array<{ range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }>
+  currentIndex: 0
 };
 
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
+// Helpers for ribbon notifications
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -19,6 +20,9 @@ function showNotification(id, opts) {
   }
 }
 
+/**
+ * Decide proper “s” vs “z” based on the first letter/digit of the next word
+ */
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
@@ -31,129 +35,141 @@ function determineCorrectPreposition(rawWord) {
   return unvoiced.has(key) ? "s" : "z";
 }
 
+// ─────────────────────────────────────────────────
+// 1) Check S/Z: single full scan, track & highlight all mismatches, select first
+// ─────────────────────────────────────────────────
 export async function checkDocumentText() {
-  if (state.isChecking) return;
-  state.isChecking = true;
-
-  // reset on every click:
   clearNotification(NOTIF_ID);
   state.errors = [];
+  state.currentIndex = 0;
 
-  try {
-    await Word.run(async context => {
-      const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
-      const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
-      oldS.load("items"); oldZ.load("items");
+  await Word.run(async context => {
+    // A) Clear old highlights
+    const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
+    const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
+    oldS.load("items"); oldZ.load("items");
+    await context.sync();
+    [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
+    await context.sync();
+
+    // B) Find all standalone “s” and “z”
+    const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
+    const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
+    sRes.load("items"); zRes.load("items");
+    await context.sync();
+
+    // C) Evaluate & enqueue mismatches
+    for (const r of [...sRes.items, ...zRes.items]) {
+      const raw = r.text.trim();
+      if (!/^[sSzZ]$/.test(raw)) continue;
+
+      // look at the next word
+      const after = r.getRange("After")
+                     .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+      after.load("text");
       await context.sync();
-      [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
+      const nxt = after.text.trim();
+      if (!nxt) continue;
+
+      const expectedLower = determineCorrectPreposition(nxt);
+      if (!expectedLower || expectedLower === raw.toLowerCase()) continue;
+
+      // preserve original case
+      const suggestion = raw === raw.toUpperCase()
+        ? expectedLower.toUpperCase()
+        : expectedLower;
+
+      // track this range *now* and highlight it
+      context.trackedObjects.add(r);
+      r.font.highlightColor = HIGHLIGHT_COLOR;
+      state.errors.push({ range: r, suggestion });
+    }
+
+    await context.sync();
+
+    // D) select first mismatch (or notify “no mismatches”)
+    if (!state.errors.length) {
+      showNotification(NOTIF_ID, {
+        type: "informationalMessage",
+        message: "✨ No mismatches!",
+        icon: "Icon.80x80"
+      });
+    } else {
+      const firstRange = state.errors[0].range;
+      context.trackedObjects.add(firstRange);
+      firstRange.select();
       await context.sync();
-
-      const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
-      const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
-      sRes.load("items"); zRes.load("items");
-      await context.sync();
-
-      for (const r of [...sRes.items, ...zRes.items]) {
-        const raw = r.text.trim();
-        if (!/^[sSzZ]$/.test(raw)) continue;
-
-        const after = r.getRange("After")
-                       .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
-        after.load("text");
-        await context.sync();
-        const nxt = after.text.trim();
-        if (!nxt) continue;
-
-        const expect = determineCorrectPreposition(nxt);
-        if (expect && raw.toLowerCase() !== expect) {
-          const suggestion = raw === raw.toUpperCase()
-            ? expect.toUpperCase()
-            : expect;
-          context.trackedObjects.add(r);
-          r.font.highlightColor = HIGHLIGHT_COLOR;
-          state.errors.push({ range: r, suggestion });
-        }
-      }
-
-      await context.sync();
-
-      if (!state.errors.length) {
-        showNotification(NOTIF_ID, {
-          type: "informationalMessage",
-          message: "✨ No mismatches!",
-          icon: "Icon.80x80"
-        });
-      } else {
-        const first = state.errors[0].range;
-        context.trackedObjects.add(first);
-        first.select();
-        await context.sync();
-      }
-    });
-  } catch (e) {
-    console.error("checkDocumentText error", e);
-    showNotification(NOTIF_ID, {
-      type: "errorMessage",
-      message: "Check failed; please try again."
-    });
-  } finally {
-    state.isChecking = false;
-  }
+    }
+  });
 }
 
+// ─────────────────────────────────────────────────
+// 2) Accept One: replace current, clear highlight, advance & select next
+// ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
-  if (!state.errors.length) return;
-  const { range, suggestion } = state.errors.shift();
+  if (state.currentIndex >= state.errors.length) return;
+
+  // get & remove the current mismatch
+  const { range, suggestion } = state.errors[state.currentIndex];
+
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
     range.font.highlightColor = null;
     await context.sync();
+
+    // advance pointer
+    state.currentIndex++;
+    if (state.currentIndex < state.errors.length) {
+      const next = state.errors[state.currentIndex].range;
+      context.trackedObjects.add(next);
+      next.select();
+      await context.sync();
+    }
   });
-  await checkDocumentText();
 }
 
+// ─────────────────────────────────────────────────
+// 3) Reject One: clear highlight on current, advance & select next
+// ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
-  if (!state.errors.length) return;
-  const { range } = state.errors.shift();
+  if (state.currentIndex >= state.errors.length) return;
+
+  const { range } = state.errors[state.currentIndex];
+
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.font.highlightColor = null;
     await context.sync();
+
+    state.currentIndex++;
+    if (state.currentIndex < state.errors.length) {
+      const next = state.errors[state.currentIndex].range;
+      context.trackedObjects.add(next);
+      next.select();
+      await context.sync();
+    }
   });
-  await checkDocumentText();
 }
 
+// ─────────────────────────────────────────────────
+// 4) Accept All: replace & clear all mismatches in one pass
+// ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
+
   await Word.run(async context => {
-    const opts = { matchWholeWord: true, matchCase: false };
-    const sRes = context.document.body.search("s", opts);
-    const zRes = context.document.body.search("z", opts);
-    sRes.load("items"); zRes.load("items");
-    await context.sync();
-    for (const r of [...sRes.items, ...zRes.items]) {
-      const raw = r.text.trim().toLowerCase();
-      if (raw === "s" || raw === "z") {
-        const after = r.getRange("After")
-                       .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
-        after.load("text");
-        await context.sync();
-        const nxt = after.text.trim();
-        const expect = determineCorrectPreposition(nxt);
-        if (expect && raw !== expect) {
-          context.trackedObjects.add(r);
-          r.insertText(
-            r.text === r.text.toUpperCase() ? expect.toUpperCase() : expect,
-            Word.InsertLocation.replace
-          );
-          r.font.highlightColor = null;
-        }
-      }
+    for (const { range, suggestion } of state.errors) {
+      context.trackedObjects.add(range);
+      range.insertText(suggestion, Word.InsertLocation.replace);
+      range.font.highlightColor = null;
     }
     await context.sync();
-    state.errors = [];
   });
+
+  // reset state
+  state.errors = [];
+  state.currentIndex = 0;
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Accepted all!",
@@ -161,23 +177,22 @@ export async function acceptAllChanges() {
   });
 }
 
+// ─────────────────────────────────────────────────
+// 5) Reject All: clear all highlights at once
+// ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
+
   await Word.run(async context => {
-    const opts = { matchWholeWord: true, matchCase: false };
-    const sRes = context.document.body.search("s", opts);
-    const zRes = context.document.body.search("z", opts);
-    sRes.load("items"); zRes.load("items");
-    await context.sync();
-    for (const r of [...sRes.items, ...zRes.items]) {
-      if (/^[sSzZ]$/.test(r.text.trim())) {
-        context.trackedObjects.add(r);
-        r.font.highlightColor = null;
-      }
+    for (const { range } of state.errors) {
+      context.trackedObjects.add(range);
+      range.font.highlightColor = null;
     }
     await context.sync();
-    state.errors = [];
   });
+
+  state.errors = [];
+  state.currentIndex = 0;
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Cleared all!",
