@@ -1,7 +1,7 @@
 /* global Office, Word */
 
 let state = {
-  errors: [],        // { range: Word.Range, suggestion: "s"|"z" }[]
+  errors: [],        // { range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }[]
   isChecking: false
 };
 
@@ -29,28 +29,29 @@ function determineCorrectPreposition(rawWord) {
   const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
   if (!m) return null;
   const c = m[0].toLowerCase();
+
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
   const digitMap   = { '1':'e','2':'d','3':'t','4':'š','5':'p',
                        '6':'š','7':'s','8':'o','9':'d','0':'n' };
   const key = /\d/.test(c) ? digitMap[c] : c;
+
   return unvoiced.has(key) ? "s" : "z";
 }
 
 // ─────────────────────────────────────────────────
 // 1) Check S/Z: populate state.errors, highlight all, select first
-//    — now resets & rescans on every click
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
-  // **NEW**: clear previous notification & queue on every invocation
-  clearNotification(NOTIF_ID);
-  state.errors = [];
-
   if (state.isChecking) return;
   state.isChecking = true;
+  clearNotification(NOTIF_ID);
+
+  // clear our error queue
+  state.errors = [];
 
   try {
     await Word.run(async context => {
-      // A) clear any old highlights
+      // - clear any old highlights
       const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       oldS.load("items"); oldZ.load("items");
@@ -58,17 +59,18 @@ export async function checkDocumentText() {
       [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
       await context.sync();
 
-      // B) find every standalone s or z
+      // - find every standalone s or z
       const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // C) evaluate each candidate
+      // - evaluate each candidate
       for (const r of [...sRes.items, ...zRes.items]) {
-        const raw = r.text.trim().toLowerCase();
-        if (raw !== "s" && raw !== "z") continue;
+        const raw = r.text.trim();
+        if (!/^[sSzZ]$/.test(raw)) continue;
 
+        const actualLower = raw.toLowerCase();
         const after = r.getRange("After")
                        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
         after.load("text");
@@ -76,14 +78,17 @@ export async function checkDocumentText() {
         const nxt = after.text.trim();
         if (!nxt) continue;
 
-        const actual = raw;
-        const expect = determineCorrectPreposition(nxt);
-        if (expect && actual !== expect) {
-          // track, highlight, queue
-          context.trackedObjects.add(r);
-          r.font.highlightColor = HIGHLIGHT_COLOR;
-          state.errors.push({ range: r, suggestion: expect });
-        }
+        const expectedLower = determineCorrectPreposition(nxt);
+        if (!expectedLower || expectedLower === actualLower) continue;
+
+        const suggestion = raw === raw.toUpperCase()
+          ? expectedLower.toUpperCase()
+          : expectedLower;
+
+        // track + highlight + queue it
+        context.trackedObjects.add(r);
+        r.font.highlightColor = HIGHLIGHT_COLOR;
+        state.errors.push({ range: r, suggestion });
       }
 
       await context.sync();
@@ -91,7 +96,7 @@ export async function checkDocumentText() {
       if (!state.errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
-          message: "✨ No 's'/'z' mismatches!",
+          message: "✨ No mismatches!",
           icon: "Icon.80x80"
         });
       } else {
@@ -104,7 +109,7 @@ export async function checkDocumentText() {
     });
   } catch (e) {
     console.error("checkDocumentText error", e);
-    showNotification("checkError", {
+    showNotification(NOTIF_ID, {
       type: "errorMessage",
       message: "Check failed; please try again."
     });
@@ -119,7 +124,10 @@ export async function checkDocumentText() {
 export async function acceptCurrentChange() {
   if (!state.errors.length) return;
 
+  // pull off the first
   const { range, suggestion } = state.errors.shift();
+
+  // replace + clear highlight
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
@@ -127,7 +135,7 @@ export async function acceptCurrentChange() {
     await context.sync();
   });
 
-  // re-scan to rediscover & select the next one
+  // re-scan & auto-select the new first
   await checkDocumentText();
 }
 
@@ -137,14 +145,17 @@ export async function acceptCurrentChange() {
 export async function rejectCurrentChange() {
   if (!state.errors.length) return;
 
+  // pull off the first
   const { range } = state.errors.shift();
+
+  // clear highlight only
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.font.highlightColor = null;
     await context.sync();
   });
 
-  // re-scan to rediscover & select the next one
+  // re-scan & auto-select the new first
   await checkDocumentText();
 }
 
@@ -162,9 +173,10 @@ export async function acceptAllChanges() {
     await context.sync();
 
     for (const r of [...sRes.items, ...zRes.items]) {
-      const raw = r.text.trim().toLowerCase();
-      if (raw !== "s" && raw !== "z") continue;
+      const raw = r.text.trim();
+      if (!/^[sSzZ]$/.test(raw)) continue;
 
+      const actualLower = raw.toLowerCase();
       const after = r.getRange("After")
                      .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
       after.load("text");
@@ -172,17 +184,22 @@ export async function acceptAllChanges() {
       const nxt = after.text.trim();
       if (!nxt) continue;
 
-      const expect = determineCorrectPreposition(nxt);
-      if (expect && raw !== expect) {
-        context.trackedObjects.add(r);
-        r.insertText(expect, Word.InsertLocation.replace);
-        r.font.highlightColor = null;
-      }
+      const expectedLower = determineCorrectPreposition(nxt);
+      if (!expectedLower || expectedLower === actualLower) continue;
+
+      const suggestion = raw === raw.toUpperCase()
+        ? expectedLower.toUpperCase()
+        : expectedLower;
+
+      r.insertText(suggestion, Word.InsertLocation.replace);
+      r.font.highlightColor = null;
     }
+
     await context.sync();
-    state.errors = [];
   });
 
+  // clear the queue
+  state.errors = [];
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Accepted all!",
@@ -204,16 +221,14 @@ export async function rejectAllChanges() {
     await context.sync();
 
     for (const r of [...sRes.items, ...zRes.items]) {
-      const raw = r.text.trim().toLowerCase();
-      if (raw === "s" || raw === "z") {
-        context.trackedObjects.add(r);
-        r.font.highlightColor = null;
-      }
+      const raw = r.text.trim();
+      if (!/^[sSzZ]$/.test(raw)) continue;
+      r.font.highlightColor = null;
     }
     await context.sync();
-    state.errors = [];
   });
 
+  state.errors = [];
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Cleared all!",
