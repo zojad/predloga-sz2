@@ -7,7 +7,7 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// Helpers for ribbon notifications
+// Ribbon‐notification helpers
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -39,16 +39,16 @@ function determineCorrectPreposition(rawWord) {
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z: ALWAYS reset & rescan on each click
+// 1) Check S/Z: always resets & rescans on each click
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
-  // 1) clear notification & previous queue
+  // **always** clear any old notification + previously queued errors
   clearNotification(NOTIF_ID);
   state.errors = [];
 
   try {
     await Word.run(async context => {
-      // A) Clear any old highlights
+      // A) Clear old highlights
       const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       oldS.load("items"); oldZ.load("items");
@@ -63,9 +63,10 @@ export async function checkDocumentText() {
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // C) Filter to pure single-letter, sort in doc order
-      let all = [...sRes.items, ...zRes.items].filter(r => /^[sSzZ]$/.test(r.text.trim()));
-      all.sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
+      // C) Filter to pure single‐letter, sort in document order
+      let all = [...sRes.items, ...zRes.items]
+        .filter(r => /^[sSzZ]$/.test(r.text.trim()))
+        .sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
 
       // D) Evaluate each candidate
       for (const r of all) {
@@ -82,12 +83,11 @@ export async function checkDocumentText() {
         const expectedLower = determineCorrectPreposition(nxt);
         if (!expectedLower || expectedLower === actualLower) continue;
 
-        // preserve case
+        // preserve uppercase
         const suggestion = raw === raw.toUpperCase()
           ? expectedLower.toUpperCase()
           : expectedLower;
 
-        // track, highlight & enqueue
         context.trackedObjects.add(r);
         r.font.highlightColor = HIGHLIGHT_COLOR;
         state.errors.push({ range: r, suggestion });
@@ -95,7 +95,7 @@ export async function checkDocumentText() {
 
       await context.sync();
 
-      // E) Notify or select the very first mismatch
+      // E) Notify or select the first mismatch
       if (!state.errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
@@ -160,7 +160,7 @@ export async function rejectCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: fresh search + replace every mismatch
+// 4) Accept All: fresh search & replace every mismatch
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -172,8 +172,9 @@ export async function acceptAllChanges() {
     sRes.load("items"); zRes.load("items");
     await context.sync();
 
-    let all = [...sRes.items, ...zRes.items].filter(r => /^[sSzZ]$/.test(r.text.trim()));
-    all.sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
+    let all = [...sRes.items, ...zRes.items]
+      .filter(r => /^[sSzZ]$/.test(r.text.trim()))
+      .sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
 
     for (const r of all) {
       const raw = r.text.trim();
@@ -208,7 +209,7 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: fresh search + clear every highlight
+// 5) Reject All: fresh search & clear every highlight
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
@@ -220,8 +221,9 @@ export async function rejectAllChanges() {
     sRes.load("items"); zRes.load("items");
     await context.sync();
 
-    let all = [...sRes.items, ...zRes.items].filter(r => /^[sSzZ]$/.test(r.text.trim()));
-    all.sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
+    let all = [...sRes.items, ...zRes.items]
+      .filter(r => /^[sSzZ]$/.test(r.text.trim()))
+      .sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
 
     for (const r of all) {
       r.font.highlightColor = null;
