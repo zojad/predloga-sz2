@@ -1,14 +1,14 @@
 /* global Office, Word */
 
 let state = {
-  errors: [],        // { range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }[]
+  errors: [],        // array of { range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }
   isChecking: false
 };
 
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// Helpers to clear/add ribbon notifications
+// Helpers to push/pull ribbon notifications
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -21,8 +21,7 @@ function showNotification(id, opts) {
 }
 
 /**
- * Based on the first letter of the next word,
- * choose “s” if it’s a voiceless consonant, otherwise “z”.
+ * Look at the first letter of rawWord and decide "s" vs "z".
  */
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
@@ -30,16 +29,14 @@ function determineCorrectPreposition(rawWord) {
   if (!m) return null;
   const c = m[0].toLowerCase();
   const voiceless = new Set(['c','č','f','h','k','p','s','š','t']);
-  const digitMap   = {
-    '1':'e','2':'d','3':'t','4':'š','5':'p',
-    '6':'š','7':'s','8':'o','9':'d','0':'n'
-  };
+  const digitMap   = { '1':'e','2':'d','3':'t','4':'š','5':'p',
+                       '6':'š','7':'s','8':'o','9':'d','0':'n' };
   const key = /\d/.test(c) ? digitMap[c] : c;
   return voiceless.has(key) ? "s" : "z";
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z: fresh scan, highlight all mismatches, select first
+// 1) Fresh scan & highlight all mismatches, select the first
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
   if (state.isChecking) return;
@@ -49,26 +46,23 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      // 1) Clear any existing highlights
-      const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
-      const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
-      oldS.load("items"); oldZ.load("items");
-      await context.sync();
-      [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
+      // ** flush _all_ highlights in the body **
+      context.document.body.font.highlightColor = null;
       await context.sync();
 
-      // 2) Find every standalone “s” or “z”
-      const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
-      const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
+      // search for standalone "s" & "z"
+      const opts = { matchWholeWord: true, matchCase: false };
+      const sRes = context.document.body.search("s", opts);
+      const zRes = context.document.body.search("z", opts);
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // 3) Evaluate each candidate
+      // for each letter candidate decide if it's wrong
       for (const r of [...sRes.items, ...zRes.items]) {
         const raw = r.text.trim();
-        if (!/^[sSzZ]$/.test(raw)) continue;
+        if (!/^[sSzZ]$/.test(raw)) continue;   // exactly one letter
 
-        // grab the next word
+        // peek at the next word
         const after = r.getRange("After")
                        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
         after.load("text");
@@ -76,24 +70,22 @@ export async function checkDocumentText() {
         const nxt = after.text.trim();
         if (!nxt) continue;
 
-        // decide expected preposition
+        // decide what it should have been
         const expectedLower = determineCorrectPreposition(nxt);
         if (!expectedLower || expectedLower === raw.toLowerCase()) continue;
 
-        // preserve case
+        // preserve upper/lower
         const suggestion = raw === raw.toUpperCase()
           ? expectedLower.toUpperCase()
           : expectedLower;
 
-        // highlight & queue
-        context.trackedObjects.add(r);
+        // highlight just that single-letter range
         r.font.highlightColor = HIGHLIGHT_COLOR;
         state.errors.push({ range: r, suggestion });
       }
 
       await context.sync();
 
-      // 4) either notify → no mismatches, or select the first one
       if (!state.errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
@@ -101,8 +93,8 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
+        // select the very first wrong letter
         const first = state.errors[0].range;
-        context.trackedObjects.add(first);
         first.select();
         await context.sync();
       }
@@ -119,46 +111,46 @@ export async function checkDocumentText() {
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept One: replace & clear highlight, then re-scan
+// 2) Accept One: fix the first mismatch & then re-scan
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
   if (!state.errors.length) return;
 
-  // pull off the first queued mismatch
+  // pull off first item
   const { range, suggestion } = state.errors.shift();
 
-  // do the replace
+  // replace it
   await Word.run(async context => {
-    context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
     range.font.highlightColor = null;
     await context.sync();
   });
 
-  // then re-run the scan so the next one is auto-selected
+  // re-run the full scan → next mismatch will be selected automatically
   await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject One: clear highlight, then re-scan
+// 3) Reject One: clear highlight on first mismatch & then re-scan
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
   if (!state.errors.length) return;
 
+  // pull off first item
   const { range } = state.errors.shift();
 
+  // just clear its highlight
   await Word.run(async context => {
-    context.trackedObjects.add(range);
     range.font.highlightColor = null;
     await context.sync();
   });
 
-  // re-scan to pick up the new first
+  // re-run a fresh scan
   await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: fresh scan → replace every mismatch in batch
+// 4) Accept All: batch-replace every mismatch in one go
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -184,7 +176,6 @@ export async function acceptAllChanges() {
       const expectedLower = determineCorrectPreposition(nxt);
       if (!expectedLower || expectedLower === raw.toLowerCase()) continue;
 
-      // preserve case
       const suggestion = raw === raw.toUpperCase()
         ? expectedLower.toUpperCase()
         : expectedLower;
@@ -196,8 +187,9 @@ export async function acceptAllChanges() {
     await context.sync();
   });
 
-  // clear our queue so a new scan can run
+  // clear our queue so we can scan again
   state.errors = [];
+
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Accepted all!",
@@ -206,7 +198,7 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: fresh scan → clear all highlights in batch
+// 5) Reject All: batch-clear every highlight in one go
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
@@ -223,11 +215,11 @@ export async function rejectAllChanges() {
         r.font.highlightColor = null;
       }
     }
-
     await context.sync();
   });
 
   state.errors = [];
+
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Cleared all!",
