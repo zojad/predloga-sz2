@@ -1,7 +1,8 @@
 /* global Office, Word */
 
+// In‐memory state for mismatches
 let state = {
-  errors: [],        // { range: Word.Range, suggestion: "s"|"z" }[]
+  errors: [],        // Array of { range: Word.Range, suggestion: "s"|"z" }
   currentIndex: 0,
   isChecking: false
 };
@@ -9,6 +10,7 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
+// Helpers for ribbon notifications
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -46,7 +48,7 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      // 1. Clear any old highlights
+      // 1. Clear previous highlights (if any)
       for (const e of state.errors) {
         context.trackedObjects.add(e.range);
         e.range.font.highlightColor = null;
@@ -63,7 +65,7 @@ export async function checkDocumentText() {
       const candidates = [...sRes.items, ...zRes.items]
         .filter(r => ['s','z'].includes(r.text.trim().toLowerCase()));
 
-      // 3. Evaluate each candidate
+      // 3. For each candidate, get the next word and compare
       for (const r of candidates) {
         const after = r.getRange("After")
                        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
@@ -89,7 +91,8 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
-        // Select the first mismatch
+        // Select the very first mismatch
+        state.currentIndex = 0;
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
         first.select();
@@ -113,10 +116,10 @@ export async function checkDocumentText() {
 export async function acceptCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
 
-  // Grab and remove the current mismatch from the queue
+  // Remove current from queue
   const { range, suggestion } = state.errors.splice(state.currentIndex, 1)[0];
 
-  // Step 1: do the replace & clear highlight
+  // Step 1: replace & clear highlight
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
@@ -124,7 +127,7 @@ export async function acceptCurrentChange() {
     await context.sync();
   });
 
-  // Step 2: select the next mismatch (if any)
+  // Step 2: select next mismatch if any
   if (state.currentIndex < state.errors.length) {
     await Word.run(async context => {
       const next = state.errors[state.currentIndex].range;
@@ -141,17 +144,17 @@ export async function acceptCurrentChange() {
 export async function rejectCurrentChange() {
   if (state.currentIndex >= state.errors.length) return;
 
-  // Remove the current mismatch from the queue
+  // Remove current from queue
   const { range } = state.errors.splice(state.currentIndex, 1)[0];
 
-  // Step 1: clear its highlight
+  // Step 1: clear highlight
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.font.highlightColor = null;
     await context.sync();
   });
 
-  // Step 2: select the next one (if any)
+  // Step 2: select next mismatch if any
   if (state.currentIndex < state.errors.length) {
     await Word.run(async context => {
       const next = state.errors[state.currentIndex].range;
@@ -163,9 +166,14 @@ export async function rejectCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: replace all mismatches in one batch
+// 4) Accept All: repopulate if needed, then replace all
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
+  // If queue is empty, repopulate via a fresh check
+  if (!state.errors.length) {
+    await checkDocumentText();
+  }
+  console.log("▶ acceptAllChanges; errors:", state.errors.length);
   if (!state.errors.length) return;
 
   await Word.run(async context => {
@@ -177,7 +185,6 @@ export async function acceptAllChanges() {
     await context.sync();
   });
 
-  // Clear our queue
   state.errors = [];
   state.currentIndex = 0;
   showNotification(NOTIF_ID, {
@@ -188,9 +195,14 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: clear all highlights in one batch
+// 5) Reject All: repopulate if needed, then clear all
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
+  // If queue is empty, repopulate via a fresh check
+  if (!state.errors.length) {
+    await checkDocumentText();
+  }
+  console.log("▶ rejectAllChanges; errors:", state.errors.length);
   if (!state.errors.length) return;
 
   await Word.run(async context => {
