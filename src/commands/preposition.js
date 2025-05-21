@@ -1,241 +1,197 @@
 /* global Office, Word */
 
 let state = {
-  errors: []   // Array<{ range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }>
+  errors: [],         // { range: Word.Range, suggestion: "s"|"z" }[]
+  currentIndex: 0,
+  isChecking: false
 };
 
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// Ribbon‐notification helpers
 function clearNotification(id) {
-  if (Office.NotificationMessages?.deleteAsync) {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.deleteAsync === "function") {
     Office.NotificationMessages.deleteAsync(id);
   }
 }
-function showNotification(id, opts) {
-  if (Office.NotificationMessages?.addAsync) {
-    Office.NotificationMessages.addAsync(id, opts);
+function showNotification(id, options) {
+  if (Office.NotificationMessages && typeof Office.NotificationMessages.addAsync === "function") {
+    Office.NotificationMessages.addAsync(id, options);
   }
 }
 
-/**
- * Decide “s” vs “z”:
- *  - unvoiced consonants (c,č,f,h,k,p,s,š,t) ⇒ "s"
- *  - otherwise ⇒ "z"
- */
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
-  const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
-  if (!m) return null;
-  const c = m[0].toLowerCase();
+  const match = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
+  if (!match) return null;
+  const first = match[0].toLowerCase();
   const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
-  const digitMap = {
-    '1':'e','2':'d','3':'t','4':'š','5':'p',
-    '6':'š','7':'s','8':'o','9':'d','0':'n'
-  };
-  const key = /\d/.test(c) ? digitMap[c] : c;
-  return unvoiced.has(key) ? "s" : "z";
+  const numMap   = {'1':'e','2':'d','3':'t','4':'š','5':'p','6':'š','7':'s','8':'o','9':'d','0':'n'};
+  return (/\d/.test(first) ? unvoiced.has(numMap[first]) : unvoiced.has(first))
+    ? "s" : "z";
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z: always resets & rescans on each click
+// 1) Check S/Z: ALWAYS reset & rescan on each click
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
-  // **always** clear any old notification + previously queued errors
+  // **Reset** on every click:
   clearNotification(NOTIF_ID);
+  state.errors.forEach(e => e.range.font.highlightColor = null);
   state.errors = [];
+  state.currentIndex = 0;
+
+  if (state.isChecking) return;
+  state.isChecking = true;
 
   try {
     await Word.run(async context => {
-      // A) Clear old highlights
-      const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
-      const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
-      oldS.load("items"); oldZ.load("items");
-      await context.sync();
-      [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
-      await context.sync();
+      // Clear previous highlights
+      state.errors.forEach(e => e.range.font.highlightColor = null);
+      state.errors = [];
+      state.currentIndex = 0;
 
-      // B) Find standalone "s" and "z"
-      const opts = { matchWholeWord: true, matchCase: false };
+      const opts = { matchCase: false, matchWholeWord: true };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // C) Filter to pure single‐letter, sort in document order
-      let all = [...sRes.items, ...zRes.items]
-        .filter(r => /^[sSzZ]$/.test(r.text.trim()))
-        .sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
+      const candidates = [...sRes.items, ...zRes.items]
+        .filter(r => ["s","z"].includes(r.text.trim().toLowerCase()));
 
-      // D) Evaluate each candidate
-      for (const r of all) {
-        const raw = r.text.trim();
-        const actualLower = raw.toLowerCase();
-
-        const after = r.getRange("After")
-                       .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
-        after.load("text");
+      const errors = [];
+      for (const prep of candidates) {
+        const after = prep.getRange("After");
+        const nxtR = after.getNextTextRange(
+          [" ", "\n", ".", ",", ";", "?", "!"], 
+          true
+        );
+        nxtR.load("text");
         await context.sync();
-        const nxt = after.text.trim();
+
+        const nxt = nxtR.text.trim();
         if (!nxt) continue;
 
-        const expectedLower = determineCorrectPreposition(nxt);
-        if (!expectedLower || expectedLower === actualLower) continue;
-
-        // preserve uppercase
-        const suggestion = raw === raw.toUpperCase()
-          ? expectedLower.toUpperCase()
-          : expectedLower;
-
-        context.trackedObjects.add(r);
-        r.font.highlightColor = HIGHLIGHT_COLOR;
-        state.errors.push({ range: r, suggestion });
+        const actual = prep.text.trim().toLowerCase();
+        const expect = determineCorrectPreposition(nxt);
+        if (expect && actual !== expect) {
+          errors.push({ range: prep, suggestion: expect });
+        }
       }
 
-      await context.sync();
+      state.errors = errors;
 
-      // E) Notify or select the first mismatch
-      if (!state.errors.length) {
+      if (!errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
-          message: "✨ No mismatches!",
-          icon: "Icon.80x80"
+          message: "✨ No 's'/'z' mismatches!",
+          icon: "Icon.80x80",
+          persistent: false
         });
       } else {
-        const first = state.errors[0].range;
-        context.trackedObjects.add(first);
-        first.select();
+        errors.forEach(e => e.range.font.highlightColor = HIGHLIGHT_COLOR);
         await context.sync();
+        errors[0].range.select();
       }
     });
   } catch (e) {
     console.error("checkDocumentText error", e);
-    showNotification(NOTIF_ID, {
+    showNotification("checkError", {
       type: "errorMessage",
-      message: "Check failed; please try again."
+      message: "Check failed; please try again.",
+      persistent: false
     });
+  } finally {
+    state.isChecking = false;
   }
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept One: replace first queued mismatch & select next
+// 2) Accept One: replace current & auto-advance
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
-  if (!state.errors.length) return;
-  const { range, suggestion } = state.errors.shift();
+  if (state.currentIndex >= state.errors.length) return;
 
-  await Word.run(async context => {
-    context.trackedObjects.add(range);
-    range.insertText(suggestion, Word.InsertLocation.replace);
-    range.font.highlightColor = null;
+  const err = state.errors[state.currentIndex];
+  try {
+    await Word.run(async context => {
+      context.trackedObjects.add(err.range);
+      err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+      err.range.font.highlightColor = null;
+      await context.sync();
 
-    if (state.errors.length) {
-      const next = state.errors[0].range;
-      context.trackedObjects.add(next);
-      next.select();
-    }
-    await context.sync();
-  });
+      state.currentIndex++;
+      if (state.currentIndex < state.errors.length) {
+        state.errors[state.currentIndex].range.select();
+        await context.sync();
+      }
+    });
+  } catch (e) {
+    console.error("acceptCurrentChange error", e);
+  }
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject One: clear first queued mismatch & select next
+// 3) Reject One: clear current & auto-advance
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
-  if (!state.errors.length) return;
-  const { range } = state.errors.shift();
+  if (state.currentIndex >= state.errors.length) return;
 
-  await Word.run(async context => {
-    context.trackedObjects.add(range);
-    range.font.highlightColor = null;
+  const err = state.errors[state.currentIndex];
+  try {
+    await Word.run(async context => {
+      context.trackedObjects.add(err.range);
+      err.range.font.highlightColor = null;
+      await context.sync();
 
-    if (state.errors.length) {
-      const next = state.errors[0].range;
-      context.trackedObjects.add(next);
-      next.select();
-    }
-    await context.sync();
-  });
+      state.currentIndex++;
+      if (state.currentIndex < state.errors.length) {
+        state.errors[state.currentIndex].range.select();
+        await context.sync();
+      }
+    });
+  } catch (e) {
+    console.error("rejectCurrentChange error", e);
+  }
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: fresh search & replace every mismatch
+// 4) Accept All: replace every mismatch at once
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
-  clearNotification(NOTIF_ID);
-
-  await Word.run(async context => {
-    const opts = { matchWholeWord: true, matchCase: false };
-    const sRes = context.document.body.search("s", opts);
-    const zRes = context.document.body.search("z", opts);
-    sRes.load("items"); zRes.load("items");
-    await context.sync();
-
-    let all = [...sRes.items, ...zRes.items]
-      .filter(r => /^[sSzZ]$/.test(r.text.trim()))
-      .sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
-
-    for (const r of all) {
-      const raw = r.text.trim();
-      const actualLower = raw.toLowerCase();
-
-      const after = r.getRange("After")
-                     .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
-      after.load("text");
+  if (!state.errors.length) return;
+  try {
+    await Word.run(async context => {
+      for (const err of state.errors) {
+        context.trackedObjects.add(err.range);
+        err.range.insertText(err.suggestion, Word.InsertLocation.replace);
+        err.range.font.highlightColor = null;
+      }
       await context.sync();
-      const nxt = after.text.trim();
-      if (!nxt) continue;
-
-      const expectedLower = determineCorrectPreposition(nxt);
-      if (!expectedLower || expectedLower === actualLower) continue;
-
-      const suggestion = raw === raw.toUpperCase()
-        ? expectedLower.toUpperCase()
-        : expectedLower;
-
-      r.insertText(suggestion, Word.InsertLocation.replace);
-      r.font.highlightColor = null;
-    }
-    await context.sync();
-  });
-
-  state.errors = [];
-  showNotification(NOTIF_ID, {
-    type: "informationalMessage",
-    message: "Accepted all!",
-    icon: "Icon.80x80"
-  });
+      state.errors = [];
+    });
+  } catch (e) {
+    console.error("acceptAllChanges error", e);
+  }
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: fresh search & clear every highlight
+// 5) Reject All: clear all highlights at once
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
-  clearNotification(NOTIF_ID);
-
-  await Word.run(async context => {
-    const opts = { matchWholeWord: true, matchCase: false };
-    const sRes = context.document.body.search("s", opts);
-    const zRes = context.document.body.search("z", opts);
-    sRes.load("items"); zRes.load("items");
-    await context.sync();
-
-    let all = [...sRes.items, ...zRes.items]
-      .filter(r => /^[sSzZ]$/.test(r.text.trim()))
-      .sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
-
-    for (const r of all) {
-      r.font.highlightColor = null;
-    }
-    await context.sync();
-  });
-
-  state.errors = [];
-  showNotification(NOTIF_ID, {
-    type: "informationalMessage",
-    message: "Cleared all!",
-    icon: "Icon.80x80"
-  });
+  if (!state.errors.length) return;
+  try {
+    await Word.run(async context => {
+      for (const err of state.errors) {
+        context.trackedObjects.add(err.range);
+        err.range.font.highlightColor = null;
+      }
+      await context.sync();
+      state.errors = [];
+    });
+  } catch (e) {
+    console.error("rejectAllChanges error", e);
+  }
 }
 
