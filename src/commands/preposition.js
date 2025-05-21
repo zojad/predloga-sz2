@@ -1,8 +1,7 @@
 /* global Office, Word */
 
 let state = {
-  // queue of mismatches
-  errors: [],        // { range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }[]
+  errors: [],        // Array<{ range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }>
   isChecking: false
 };
 
@@ -21,12 +20,13 @@ function showNotification(id, opts) {
   }
 }
 
-// — Decide “s” vs “z” from the first letter of the next word —
+// — Decide “s” vs “z” from first letter of rawWord —
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
   if (!m) return null;
   const c = m[0].toLowerCase();
+
   const voiceless = new Set(['c','č','f','h','k','p','s','š','t']);
   const digitMap   = { '1':'e','2':'d','3':'t','4':'š','5':'p',
                        '6':'š','7':'s','8':'o','9':'d','0':'n' };
@@ -45,23 +45,23 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      // clear every existing highlight in one shot
+      // — clear all old highlights at once —
       context.document.body.font.highlightColor = null;
       await context.sync();
 
-      // find standalone “s” and “z”
+      // — find every standalone “s” & “z” —
       const opts = { matchWholeWord: true, matchCase: false };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // evaluate each candidate
+      // — evaluate each one —
       for (const r of [...sRes.items, ...zRes.items]) {
         const raw = r.text.trim();
         if (!/^[sSzZ]$/.test(raw)) continue;
 
-        // peek at the next word
+        // look at the next word
         const after = r.getRange("After")
                        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
         after.load("text");
@@ -69,7 +69,7 @@ export async function checkDocumentText() {
         const nxt = after.text.trim();
         if (!nxt) continue;
 
-        // decide expected preposition
+        // decide expected
         const expectedLower = determineCorrectPreposition(nxt);
         if (!expectedLower || expectedLower === raw.toLowerCase()) continue;
 
@@ -78,7 +78,8 @@ export async function checkDocumentText() {
           ? expectedLower.toUpperCase()
           : expectedLower;
 
-        // highlight & enqueue
+        // track, highlight & enqueue
+        context.trackedObjects.add(r);
         r.font.highlightColor = HIGHLIGHT_COLOR;
         state.errors.push({ range: r, suggestion });
       }
@@ -92,8 +93,9 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
-        // select the first mismatch
+        // select the very first mismatch
         const first = state.errors[0].range;
+        context.trackedObjects.add(first);
         first.select();
         await context.sync();
       }
@@ -110,33 +112,29 @@ export async function checkDocumentText() {
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept One: take the first queued mismatch, replace it, clear its highlight,
-//    then re-run checkDocumentText() so the *new* first is auto-selected.
+// 2) Accept One: fix first queued mismatch, clear it & re-run scan
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
   if (!state.errors.length) return;
-
-  // remove the first item from the queue
   const { range, suggestion } = state.errors.shift();
 
-  // replace the letter & clear highlight
   await Word.run(async context => {
+    // must re‐track before using it
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
     range.font.highlightColor = null;
     await context.sync();
   });
 
-  // re-scan → picks up remaining mismatches & selects the first
+  // re-scan → next mismatch gets selected automatically
   await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject One: clear the first queued mismatch’s highlight, then re-scan.
+// 3) Reject One: clear first queued mismatch, then re-run scan
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
   if (!state.errors.length) return;
-
   const { range } = state.errors.shift();
 
   await Word.run(async context => {
@@ -145,13 +143,11 @@ export async function rejectCurrentChange() {
     await context.sync();
   });
 
-  // re-scan → picks up remaining mismatches & selects the first
   await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: batch-replace every mismatch in one pass, clear them,
-//    then leave highlights cleared so you can re-scan if needed.
+// 4) Accept All: batch‐replace every mismatch in one go
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -184,13 +180,11 @@ export async function acceptAllChanges() {
       r.insertText(suggestion, Word.InsertLocation.replace);
       r.font.highlightColor = null;
     }
-
     await context.sync();
   });
 
-  // clear the queue, ready for a fresh scan
+  // clear queue so a fresh scan will work again
   state.errors = [];
-
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Accepted all!",
@@ -199,7 +193,7 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: batch-clear every highlight in one pass, then clear the queue.
+// 5) Reject All: clear all highlights in one go
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
@@ -216,12 +210,10 @@ export async function rejectAllChanges() {
         r.font.highlightColor = null;
       }
     }
-
     await context.sync();
   });
 
   state.errors = [];
-
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Cleared all!",
