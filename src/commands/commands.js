@@ -7,42 +7,40 @@ import {
   rejectAllChanges
 } from "./preposition.js";
 
+// — Log immediately when the commands bundle loads —
 console.log("⭐ commands.js loaded");
+
 Office.onReady(info => {
+  console.log("▶️ Office.onReady", info);
+
   if (info.host === Office.HostType.Word) {
-    // — Check S/Z —
-    Office.actions.associate("checkDocumentText", async (event) => {
-      console.log("▶️ checkDocumentText");
-      await checkDocumentText();
-      event.completed();               // ← tell Word we’re done
+    console.log("🔗 Associating actions…");
+
+    Office.actions.associate("checkDocumentText",   (...args) => {
+      console.log("▶️ OfficeAction invoked: checkDocumentText", args);
+      return checkDocumentText(...args);
     });
 
-    // — Accept One —
-    Office.actions.associate("acceptCurrentChange", async (event) => {
-      console.log("▶️ acceptCurrentChange");
-      await acceptCurrentChange();
-      event.completed();
+    Office.actions.associate("acceptCurrentChange", (...args) => {
+      console.log("▶️ OfficeAction invoked: acceptCurrentChange", args);
+      return acceptCurrentChange(...args);
     });
 
-    // — Reject One —
-    Office.actions.associate("rejectCurrentChange", async (event) => {
-      console.log("▶️ rejectCurrentChange");
-      await rejectCurrentChange();
-      event.completed();
+    Office.actions.associate("rejectCurrentChange", (...args) => {
+      console.log("▶️ OfficeAction invoked: rejectCurrentChange", args);
+      return rejectCurrentChange(...args);
     });
 
-    // — Accept All —
-    Office.actions.associate("acceptAllChanges", async (event) => {
-      console.log("▶️ acceptAllChanges");
-      await acceptAllChanges();
-      event.completed();
+    Office.actions.associate("acceptAllChanges",    (...args) => {
+      console.log("▶️ OfficeAction invoked: acceptAllChanges", args);
+      return acceptAllChanges(...args);
     });
 
-    // — Reject All —
-    Office.actions.associate("rejectAllChanges", async (event) => {
-      console.log("▶️ rejectAllChanges");
-      await rejectAllChanges();
-      event.completed();
+    Office.actions.associate("rejectAllChanges",    (...args) => {
+      console.log("▶️ OfficeAction invoked: rejectAllChanges", args);
+      return rejectAllChanges(...args);
     });
+
+    console.log("✅ Actions associated");
   }
 });
