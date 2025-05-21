@@ -8,7 +8,7 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// Notification helpers
+// Helpers for ribbon notifications
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -21,9 +21,9 @@ function showNotification(id, opts) {
 }
 
 /**
- * Decide “s” vs “z”:
- *  - if next letter is unvoiced (c,č,f,h,k,p,s,š,t) ⇒ "s"
- *  - otherwise ⇒ "z"
+ * Decide “s” vs “z” from the first letter (or digit) of the next word:
+ *   - unvoiced consonants ⇒ "s"
+ *   - otherwise ⇒ "z"
  */
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
@@ -41,21 +41,21 @@ function determineCorrectPreposition(rawWord) {
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check: find + highlight all mismatches, select first
-//    **always resets & rescans on every click**
+// 1) Check S/Z: highlight all mismatches & select first
+//    Always resets & rescans on every click.
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
-  // **always** clear out any previous queue + notification
+  // reset previous results on every invocation
   clearNotification(NOTIF_ID);
   state.errors = [];
 
-  // guard against re-entrancy if you click twice mid-scan
+  // prevent overlapping runs
   if (state.isChecking) return;
   state.isChecking = true;
 
   try {
     await Word.run(async context => {
-      // 1. clear old highlights
+      // 1) clear old highlights
       const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       oldS.load("items"); oldZ.load("items");
@@ -63,21 +63,20 @@ export async function checkDocumentText() {
       [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
       await context.sync();
 
-      // 2. locate every standalone s/z
+      // 2) find all standalone 's' or 'z'
       const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // 3. filter & queue mismatches
+      // 3) filter to pure single letters and compute suggestions
       for (const r of [...sRes.items, ...zRes.items]) {
         const raw = r.text.trim();
-        if (!/^[sSzZ]$/.test(raw)) continue;  // must be exactly one letter
+        if (!/^[sSzZ]$/.test(raw)) continue;
 
         const actualLower = raw.toLowerCase();
-        const after = r
-          .getRange("After")
-          .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+        const after = r.getRange("After")
+                       .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
         after.load("text");
         await context.sync();
 
@@ -87,12 +86,12 @@ export async function checkDocumentText() {
         const expectedLower = determineCorrectPreposition(nxt);
         if (!expectedLower || expectedLower === actualLower) continue;
 
-        // preserve uppercase if original was uppercase
+        // preserve case
         const suggestion = raw === raw.toUpperCase()
           ? expectedLower.toUpperCase()
           : expectedLower;
 
-        // track + highlight + enqueue
+        // track, highlight & enqueue
         context.trackedObjects.add(r);
         r.font.highlightColor = HIGHLIGHT_COLOR;
         state.errors.push({ range: r, suggestion });
@@ -107,7 +106,7 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
-        // select the very first mismatch
+        // select the first mismatch
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
         first.select();
@@ -126,7 +125,7 @@ export async function checkDocumentText() {
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept One: fix the first queued mismatch & select next
+// 2) Accept One: replace first queued mismatch & select next
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
   if (!state.errors.length) return;
@@ -138,7 +137,6 @@ export async function acceptCurrentChange() {
     range.insertText(suggestion, Word.InsertLocation.replace);
     range.font.highlightColor = null;
 
-    // if there’s another mismatch, select it
     if (state.errors.length) {
       const next = state.errors[0].range;
       context.trackedObjects.add(next);
@@ -149,7 +147,7 @@ export async function acceptCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject One: clear the first queued mismatch & select next
+// 3) Reject One: clear first queued mismatch & select next
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
   if (!state.errors.length) return;
@@ -170,7 +168,7 @@ export async function rejectCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: fresh-search + replace every mismatch
+// 4) Accept All: fresh search & replace every mismatch
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -187,9 +185,8 @@ export async function acceptAllChanges() {
       if (!/^[sSzZ]$/.test(raw)) continue;
 
       const actualLower = raw.toLowerCase();
-      const after = r
-        .getRange("After")
-        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+      const after = r.getRange("After")
+                     .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
       after.load("text");
       await context.sync();
 
@@ -218,7 +215,7 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: fresh-search + clear every highlight
+// 5) Reject All: fresh search & clear every highlight
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
@@ -245,4 +242,3 @@ export async function rejectAllChanges() {
     icon: "Icon.80x80"
   });
 }
-
