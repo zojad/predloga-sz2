@@ -42,14 +42,16 @@ function determineCorrectPreposition(rawWord) {
 
 // ─────────────────────────────────────────────────
 // 1) Check: find + highlight all mismatches, select first
+//    **always resets & rescans on every click**
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
+  // **always** clear out any previous queue + notification
+  clearNotification(NOTIF_ID);
+  state.errors = [];
+
+  // guard against re-entrancy if you click twice mid-scan
   if (state.isChecking) return;
   state.isChecking = true;
-  clearNotification(NOTIF_ID);
-
-  // reset
-  state.errors = [];
 
   try {
     await Word.run(async context => {
@@ -70,7 +72,7 @@ export async function checkDocumentText() {
       // 3. filter & queue mismatches
       for (const r of [...sRes.items, ...zRes.items]) {
         const raw = r.text.trim();
-        if (!/^[sSzZ]$/.test(raw)) continue;     // must be exactly one letter
+        if (!/^[sSzZ]$/.test(raw)) continue;  // must be exactly one letter
 
         const actualLower = raw.toLowerCase();
         const after = r
@@ -85,7 +87,7 @@ export async function checkDocumentText() {
         const expectedLower = determineCorrectPreposition(nxt);
         if (!expectedLower || expectedLower === actualLower) continue;
 
-        // preserve case
+        // preserve uppercase if original was uppercase
         const suggestion = raw === raw.toUpperCase()
           ? expectedLower.toUpperCase()
           : expectedLower;
@@ -98,7 +100,6 @@ export async function checkDocumentText() {
 
       await context.sync();
 
-      // either inform or select first
       if (!state.errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
@@ -106,6 +107,7 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
+        // select the very first mismatch
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
         first.select();
@@ -124,28 +126,30 @@ export async function checkDocumentText() {
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept One: fix first mismatch, then re-run check → next is auto-selected
+// 2) Accept One: fix the first queued mismatch & select next
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
   if (!state.errors.length) return;
 
-  // dequeue the first mismatch
   const { range, suggestion } = state.errors.shift();
 
-  // replace + clear highlight
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
     range.font.highlightColor = null;
+
+    // if there’s another mismatch, select it
+    if (state.errors.length) {
+      const next = state.errors[0].range;
+      context.trackedObjects.add(next);
+      next.select();
+    }
     await context.sync();
   });
-
-  // re-run a fresh check (will highlight remaining and select first)
-  await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject One: clear first mismatch, then re-run check
+// 3) Reject One: clear the first queued mismatch & select next
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
   if (!state.errors.length) return;
@@ -155,10 +159,14 @@ export async function rejectCurrentChange() {
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.font.highlightColor = null;
+
+    if (state.errors.length) {
+      const next = state.errors[0].range;
+      context.trackedObjects.add(next);
+      next.select();
+    }
     await context.sync();
   });
-
-  await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
@@ -201,7 +209,6 @@ export async function acceptAllChanges() {
     await context.sync();
   });
 
-  // clear queue & notify
   state.errors = [];
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
@@ -238,3 +245,4 @@ export async function rejectAllChanges() {
     icon: "Icon.80x80"
   });
 }
+
