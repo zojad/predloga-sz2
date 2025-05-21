@@ -7,7 +7,7 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// Notification helpers
+// Ribbon‐notification helpers
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -20,9 +20,9 @@ function showNotification(id, opts) {
 }
 
 /**
- * Decide between “s” vs “z”:
- *   unvoiced consonants (c,č,f,h,k,p,s,š,t) ⇒ "s"
- *   otherwise ⇒ "z"
+ * Decide “s” vs “z”:
+ *  - unvoiced consonants (c,č,f,h,k,p,s,š,t) ⇒ "s"
+ *  - otherwise ⇒ "z"
  */
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
@@ -43,12 +43,13 @@ function determineCorrectPreposition(rawWord) {
 // 1) Check S/Z: always reset & rescan on each click
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
+  // 1) Clear prior highlights & state
   clearNotification(NOTIF_ID);
   state.errors = [];
 
   try {
     await Word.run(async context => {
-      // 1) clear old highlights
+      // A) Clear old highlights
       const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
       const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       oldS.load("items"); oldZ.load("items");
@@ -56,30 +57,35 @@ export async function checkDocumentText() {
       [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
       await context.sync();
 
-      // 2) find all standalone "s" and "z"
-      const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
-      const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
+      // B) Find standalone "s" and "z"
+      const opts = { matchWholeWord: true, matchCase: false };
+      const sRes = context.document.body.search("s", opts);
+      const zRes = context.document.body.search("z", opts);
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // 3) queue up any mismatches
-      for (const r of [...sRes.items, ...zRes.items]) {
-        const raw = r.text.trim();
-        if (!/^[sSzZ]$/.test(raw)) continue;  // only pure "s" or "z"
+      // C) Filter to pure single‐letter, sort by document order
+      let all = [...sRes.items, ...zRes.items].filter(r => /^[sSzZ]$/.test(r.text.trim()));
+      all.sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
 
+      // D) Evaluate each candidate
+      for (const r of all) {
+        const raw = r.text.trim();
         const actualLower = raw.toLowerCase();
+
+        // get the next word
         const after = r.getRange("After")
                        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
         after.load("text");
         await context.sync();
-
         const nxt = after.text.trim();
         if (!nxt) continue;
 
+        // compute expected
         const expectedLower = determineCorrectPreposition(nxt);
         if (!expectedLower || expectedLower === actualLower) continue;
 
-        // preserve uppercase if raw was uppercase
+        // preserve case
         const suggestion = raw === raw.toUpperCase()
           ? expectedLower.toUpperCase()
           : expectedLower;
@@ -92,6 +98,7 @@ export async function checkDocumentText() {
 
       await context.sync();
 
+      // E) Notify or select first
       if (!state.errors.length) {
         showNotification(NOTIF_ID, {
           type: "informationalMessage",
@@ -99,7 +106,6 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
-        // select the very first mismatch
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
         first.select();
@@ -157,7 +163,7 @@ export async function rejectCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: fresh search + replace every mismatch
+// 4) Accept All: fresh search & replace every mismatch
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -169,16 +175,17 @@ export async function acceptAllChanges() {
     sRes.load("items"); zRes.load("items");
     await context.sync();
 
-    for (const r of [...sRes.items, ...zRes.items]) {
-      const raw = r.text.trim();
-      if (!/^[sSzZ]$/.test(raw)) continue;
+    let all = [...sRes.items, ...zRes.items].filter(r => /^[sSzZ]$/.test(r.text.trim()));
+    all.sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
 
+    for (const r of all) {
+      const raw = r.text.trim();
       const actualLower = raw.toLowerCase();
+
       const after = r.getRange("After")
                      .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
       after.load("text");
       await context.sync();
-
       const nxt = after.text.trim();
       if (!nxt) continue;
 
@@ -199,12 +206,12 @@ export async function acceptAllChanges() {
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Accepted all!",
-    icon: "Icon.80x80"
+      icon: "Icon.80x80"
   });
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: fresh search + clear every highlight
+// 5) Reject All: fresh search & clear every highlight
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
@@ -216,9 +223,10 @@ export async function rejectAllChanges() {
     sRes.load("items"); zRes.load("items");
     await context.sync();
 
-    for (const r of [...sRes.items, ...zRes.items]) {
-      const raw = r.text.trim();
-      if (!/^[sSzZ]$/.test(raw)) continue;
+    let all = [...sRes.items, ...zRes.items].filter(r => /^[sSzZ]$/.test(r.text.trim()));
+    all.sort((a, b) => a.compareLocationWith(b, Word.CompareLocation.start));
+
+    for (const r of all) {
       r.font.highlightColor = null;
     }
     await context.sync();
@@ -231,3 +239,4 @@ export async function rejectAllChanges() {
     icon: "Icon.80x80"
   });
 }
+
