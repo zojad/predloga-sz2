@@ -1,7 +1,7 @@
 /* global Office, Word */
 
 let state = {
-  errors: [],        // Array of { range: Word.Range, suggestion: "s"|"z" }
+  errors: [],        // Array<{ range: Word.Range, suggestion: "s"|"z" }>
   currentIndex: 0,
   isChecking: false
 };
@@ -9,6 +9,7 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
+// Helpers for ribbon notifications
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -20,6 +21,7 @@ function showNotification(id, opts) {
   }
 }
 
+// Decide “s” vs “z” from the first letter of the next word
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
@@ -31,40 +33,49 @@ function determineCorrectPreposition(rawWord) {
   return voiceless.has(key) ? "s" : "z";
 }
 
+// ─────────────────────────────────────────────────
+// 1) Check S/Z: highlight all mismatches & select the first
+// ─────────────────────────────────────────────────
 export async function checkDocumentText() {
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
+
+  // reset state
   state.errors = [];
   state.currentIndex = 0;
 
   try {
     await Word.run(async context => {
-      // clear old highlights
-      const oldS = context.document.body.search("s", { matchWholeWord:true, matchCase:false });
-      const oldZ = context.document.body.search("z", { matchWholeWord:true, matchCase:false });
+      // 1. Clear any old highlights
+      const oldS = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
+      const oldZ = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       oldS.load("items"); oldZ.load("items");
       await context.sync();
       [...oldS.items, ...oldZ.items].forEach(r => r.font.highlightColor = null);
       await context.sync();
 
-      // find new mismatches
-      const sRes = context.document.body.search("s", { matchWholeWord:true, matchCase:false });
-      const zRes = context.document.body.search("z", { matchWholeWord:true, matchCase:false });
+      // 2. Find standalone "s" and "z"
+      const sRes = context.document.body.search("s", { matchWholeWord: true, matchCase: false });
+      const zRes = context.document.body.search("z", { matchWholeWord: true, matchCase: false });
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
+      // 3. Evaluate each candidate
       for (const r of [...sRes.items, ...zRes.items]) {
         const t = r.text.trim().toLowerCase();
-        if (t!=="s" && t!=="z") continue;
+        if (t !== "s" && t !== "z") continue;
+
         const after = r.getRange("After")
                        .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
         after.load("text");
         await context.sync();
+
         const nxt = after.text.trim();
         if (!nxt) continue;
+
         const expected = determineCorrectPreposition(nxt);
-        if (expected && expected!==t) {
+        if (expected && expected !== t) {
           r.font.highlightColor = HIGHLIGHT_COLOR;
           state.errors.push({ range: r, suggestion: expected });
         }
@@ -77,7 +88,7 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
-        // select first
+        // Select the first mismatch
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
         first.select();
@@ -85,22 +96,26 @@ export async function checkDocumentText() {
       }
     });
   } catch (e) {
-    console.error("check error", e);
+    console.error("checkDocumentText error", e);
+    showNotification(NOTIF_ID, {
+      type: "errorMessage",
+      message: "Check failed; please try again."
+    });
   } finally {
     state.isChecking = false;
   }
 }
 
-
+// ─────────────────────────────────────────────────
+// 2) Accept One: replace current & auto-advance
+// ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
-  console.log("▶ acceptCurrentChange fired; errors in queue:", state.errors.length, "currentIndex:", state.currentIndex);
   if (state.currentIndex >= state.errors.length) return;
 
   // pull out the current mismatch
   const { range, suggestion } = state.errors.splice(state.currentIndex, 1)[0];
-  console.log("   replacing:", range.text, "→", suggestion);
 
-  // 1) replace & clear highlight
+  // Step 1: replace & clear highlight
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
@@ -108,7 +123,7 @@ export async function acceptCurrentChange() {
     await context.sync();
   });
 
-  // 2) select the next one, if present
+  // Step 2: select the next mismatch (if any)
   if (state.currentIndex < state.errors.length) {
     await Word.run(async context => {
       const next = state.errors[state.currentIndex].range;
@@ -119,22 +134,23 @@ export async function acceptCurrentChange() {
   }
 }
 
-
+// ─────────────────────────────────────────────────
+// 3) Reject One: clear current & auto-advance
+// ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
-  console.log("▶ rejectCurrentChange fired; errors in queue:", state.errors.length, "currentIndex:", state.currentIndex);
   if (state.currentIndex >= state.errors.length) return;
 
+  // remove the current mismatch from queue
   const { range } = state.errors.splice(state.currentIndex, 1)[0];
-  console.log("   clearing highlight for:", range.text);
 
-  // 1) clear highlight
+  // Step 1: clear highlight
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.font.highlightColor = null;
     await context.sync();
   });
 
-  // 2) select next
+  // Step 2: select the next mismatch (if any)
   if (state.currentIndex < state.errors.length) {
     await Word.run(async context => {
       const next = state.errors[state.currentIndex].range;
@@ -145,12 +161,14 @@ export async function rejectCurrentChange() {
   }
 }
 
-
+// ─────────────────────────────────────────────────
+// 4) Accept All: repopulate if empty, then replace all
+// ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
-  console.log("▶ acceptAllChanges fired");
-  // fresh scan so nothing is left behind
-  await checkDocumentText();
-  console.log("   after rescan, errors:", state.errors.length);
+  // if nothing queued, do a fresh check to pick up any missed
+  if (!state.errors.length) {
+    await checkDocumentText();
+  }
   if (!state.errors.length) return;
 
   await Word.run(async context => {
@@ -161,17 +179,25 @@ export async function acceptAllChanges() {
     }
     await context.sync();
   });
+
+  // reset queue
   state.errors = [];
   state.currentIndex = 0;
-  showNotification(NOTIF_ID, { type: "informationalMessage", message: "Accepted all!" });
+  showNotification(NOTIF_ID, {
+    type: "informationalMessage",
+    message: "Accepted all!",
+    icon: "Icon.80x80"
+  });
 }
 
-
+// ─────────────────────────────────────────────────
+// 5) Reject All: repopulate if empty, then clear all
+// ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
-  console.log("▶ rejectAllChanges fired");
-  // fresh scan so nothing is left behind
-  await checkDocumentText();
-  console.log("   after rescan, errors:", state.errors.length);
+  // if nothing queued, do a fresh check
+  if (!state.errors.length) {
+    await checkDocumentText();
+  }
   if (!state.errors.length) return;
 
   await Word.run(async context => {
@@ -181,8 +207,13 @@ export async function rejectAllChanges() {
     }
     await context.sync();
   });
+
+  // reset queue
   state.errors = [];
   state.currentIndex = 0;
-  showNotification(NOTIF_ID, { type: "informationalMessage", message: "Cleared all!" });
+  showNotification(NOTIF_ID, {
+    type: "informationalMessage",
+    message: "Cleared all!",
+    icon: "Icon.80x80"
+  });
 }
-
