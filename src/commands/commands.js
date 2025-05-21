@@ -16,29 +16,59 @@ Office.onReady(info => {
   if (info.host === Office.HostType.Word) {
     console.log("🔗 Associating actions…");
 
-    Office.actions.associate("checkDocumentText",   (...args) => {
-      console.log("▶️ OfficeAction invoked: checkDocumentText", args);
-      return checkDocumentText(...args);
+    Office.actions.associate("checkDocumentText", async (event) => {
+      console.log("▶️ OfficeAction invoked: checkDocumentText");
+      try {
+        await checkDocumentText();
+      } catch (e) {
+        console.error("checkDocumentText threw", e);
+      } finally {
+        event.completed();
+      }
     });
 
-    Office.actions.associate("acceptCurrentChange", (...args) => {
-      console.log("▶️ OfficeAction invoked: acceptCurrentChange", args);
-      return acceptCurrentChange(...args);
+    Office.actions.associate("acceptCurrentChange", async (event) => {
+      console.log("▶️ OfficeAction invoked: acceptCurrentChange");
+      try {
+        await acceptCurrentChange();
+      } catch (e) {
+        console.error("acceptCurrentChange threw", e);
+      } finally {
+        event.completed();
+      }
     });
 
-    Office.actions.associate("rejectCurrentChange", (...args) => {
-      console.log("▶️ OfficeAction invoked: rejectCurrentChange", args);
-      return rejectCurrentChange(...args);
+    Office.actions.associate("rejectCurrentChange", async (event) => {
+      console.log("▶️ OfficeAction invoked: rejectCurrentChange");
+      try {
+        await rejectCurrentChange();
+      } catch (e) {
+        console.error("rejectCurrentChange threw", e);
+      } finally {
+        event.completed();
+      }
     });
 
-    Office.actions.associate("acceptAllChanges",    (...args) => {
-      console.log("▶️ OfficeAction invoked: acceptAllChanges", args);
-      return acceptAllChanges(...args);
+    Office.actions.associate("acceptAllChanges", async (event) => {
+      console.log("▶️ OfficeAction invoked: acceptAllChanges");
+      try {
+        await acceptAllChanges();
+      } catch (e) {
+        console.error("acceptAllChanges threw", e);
+      } finally {
+        event.completed();
+      }
     });
 
-    Office.actions.associate("rejectAllChanges",    (...args) => {
-      console.log("▶️ OfficeAction invoked: rejectAllChanges", args);
-      return rejectAllChanges(...args);
+    Office.actions.associate("rejectAllChanges", async (event) => {
+      console.log("▶️ OfficeAction invoked: rejectAllChanges");
+      try {
+        await rejectAllChanges();
+      } catch (e) {
+        console.error("rejectAllChanges threw", e);
+      } finally {
+        event.completed();
+      }
     });
 
     console.log("✅ Actions associated");
