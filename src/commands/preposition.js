@@ -8,7 +8,9 @@ let state = {
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// — Ribbon notification helpers —
+// ─────────────────────────────────────────────────
+// Ribbon notification helpers
+// ─────────────────────────────────────────────────
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -20,43 +22,50 @@ function showNotification(id, opts) {
   }
 }
 
-// — Decide “s” vs “z” from first letter of rawWord —
+// ─────────────────────────────────────────────────
+// Determine “s” vs “z” based on the next word’s first letter
+// ─────────────────────────────────────────────────
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
   if (!m) return null;
   const c = m[0].toLowerCase();
-
-  const voiceless = new Set(['c','č','f','h','k','p','s','š','t']);
+  const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
   const digitMap   = { '1':'e','2':'d','3':'t','4':'š','5':'p',
                        '6':'š','7':'s','8':'o','9':'d','0':'n' };
   const key = /\d/.test(c) ? digitMap[c] : c;
-  return voiceless.has(key) ? "s" : "z";
+  return unvoiced.has(key) ? "s" : "z";
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z: fresh scan → highlight all mismatches → select first
+// 1) Check S/Z: clear YOUR old highlights, then re-scan
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
   if (state.isChecking) return;
   state.isChecking = true;
   clearNotification(NOTIF_ID);
+
+  // — Step A: clear only the highlights WE applied last time —
+  await Word.run(async context => {
+    for (const e of state.errors) {
+      context.trackedObjects.add(e.range);
+      e.range.font.highlightColor = null;
+    }
+    await context.sync();
+  });
+
+  // reset our queue
   state.errors = [];
 
   try {
+    // — Step B: fresh scan for mismatches —
     await Word.run(async context => {
-      // — clear all old highlights at once —
-      context.document.body.font.highlightColor = null;
-      await context.sync();
-
-      // — find every standalone “s” & “z” —
       const opts = { matchWholeWord: true, matchCase: false };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
       sRes.load("items"); zRes.load("items");
       await context.sync();
 
-      // — evaluate each one —
       for (const r of [...sRes.items, ...zRes.items]) {
         const raw = r.text.trim();
         if (!/^[sSzZ]$/.test(raw)) continue;
@@ -69,16 +78,16 @@ export async function checkDocumentText() {
         const nxt = after.text.trim();
         if (!nxt) continue;
 
-        // decide expected
+        // decide expected preposition
         const expectedLower = determineCorrectPreposition(nxt);
         if (!expectedLower || expectedLower === raw.toLowerCase()) continue;
 
-        // preserve case
+        // preserve capitalization
         const suggestion = raw === raw.toUpperCase()
           ? expectedLower.toUpperCase()
           : expectedLower;
 
-        // track, highlight & enqueue
+        // highlight & enqueue
         context.trackedObjects.add(r);
         r.font.highlightColor = HIGHLIGHT_COLOR;
         state.errors.push({ range: r, suggestion });
@@ -93,7 +102,6 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
-        // select the very first mismatch
         const first = state.errors[0].range;
         context.trackedObjects.add(first);
         first.select();
@@ -112,26 +120,25 @@ export async function checkDocumentText() {
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept One: fix first queued mismatch, clear it & re-run scan
+// 2) Accept One: fix first mismatch & auto-re-scan
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
   if (!state.errors.length) return;
   const { range, suggestion } = state.errors.shift();
 
   await Word.run(async context => {
-    // must re‐track before using it
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
     range.font.highlightColor = null;
     await context.sync();
   });
 
-  // re-scan → next mismatch gets selected automatically
+  // re-scan and select next
   await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject One: clear first queued mismatch, then re-run scan
+// 3) Reject One: clear first highlight & auto-re-scan
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
   if (!state.errors.length) return;
@@ -143,11 +150,12 @@ export async function rejectCurrentChange() {
     await context.sync();
   });
 
+  // re-scan and select next
   await checkDocumentText();
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: batch‐replace every mismatch in one go
+// 4) Accept All: fresh scan → replace every mismatch
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -183,8 +191,9 @@ export async function acceptAllChanges() {
     await context.sync();
   });
 
-  // clear queue so a fresh scan will work again
+  // clear our queue so the next scan is fresh
   state.errors = [];
+
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Accepted all!",
@@ -193,7 +202,7 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: clear all highlights in one go
+// 5) Reject All: fresh scan → clear every mismatch highlight
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
@@ -214,6 +223,7 @@ export async function rejectAllChanges() {
   });
 
   state.errors = [];
+
   showNotification(NOTIF_ID, {
     type: "informationalMessage",
     message: "Cleared all!",
