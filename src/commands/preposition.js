@@ -2,14 +2,12 @@
 
 let state = {
   errors: [],        // Array<{ range: Word.Range, suggestion: "s"|"S"|"z"|"Z" }>
-  currentIndex: 0,
-  isChecking: false
+  currentIndex: 0
 };
 
 const HIGHLIGHT_COLOR = "#FFC0CB";
 const NOTIF_ID        = "noErrors";
 
-// Ribbon‐notification helpers
 function clearNotification(id) {
   if (Office.NotificationMessages?.deleteAsync) {
     Office.NotificationMessages.deleteAsync(id);
@@ -21,11 +19,6 @@ function showNotification(id, opts) {
   }
 }
 
-/**
- * Decide between "s" vs "z":
- *  - next letter unvoiced ⇒ "s"
- *  - otherwise ⇒ "z"
- */
 function determineCorrectPreposition(rawWord) {
   if (!rawWord) return null;
   const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
@@ -39,12 +32,9 @@ function determineCorrectPreposition(rawWord) {
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z: single scan, track & highlight all mismatches, select first
+// 1) Check S/Z: ALWAYS rescans on every click
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
-  if (state.isChecking) return;
-  state.isChecking = true;
-
   clearNotification(NOTIF_ID);
   state.errors = [];
   state.currentIndex = 0;
@@ -109,25 +99,16 @@ export async function checkDocumentText() {
       type: "errorMessage",
       message: "Check failed; please try again."
     });
-  } finally {
-    state.isChecking = false;
   }
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept One: replace current, clear highlight, advance & select next
+// 2) Accept One: same as before
 // ─────────────────────────────────────────────────
 export async function acceptCurrentChange() {
-  console.log("▶️ [preposition] acceptCurrentChange()", state.currentIndex, state.errors.length);
-  showNotification("debugAccept", {
-    type: "informationalMessage",
-    message: `Accept #${state.currentIndex+1}`,
-    persistent: false
-  });
-
   if (state.currentIndex >= state.errors.length) return;
-
   const { range, suggestion } = state.errors[state.currentIndex];
+
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.insertText(suggestion, Word.InsertLocation.replace);
@@ -145,19 +126,12 @@ export async function acceptCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject One: clear current highlight, advance & select next
+// 3) Reject One: same as before
 // ─────────────────────────────────────────────────
 export async function rejectCurrentChange() {
-  console.log("▶️ [preposition] rejectCurrentChange()", state.currentIndex, state.errors.length);
-  showNotification("debugReject", {
-    type: "informationalMessage",
-    message: `Reject #${state.currentIndex+1}`,
-    persistent: false
-  });
-
   if (state.currentIndex >= state.errors.length) return;
-
   const { range } = state.errors[state.currentIndex];
+
   await Word.run(async context => {
     context.trackedObjects.add(range);
     range.font.highlightColor = null;
@@ -174,7 +148,7 @@ export async function rejectCurrentChange() {
 }
 
 // ─────────────────────────────────────────────────
-// 4) Accept All: replace & clear all mismatches in one pass
+// 4) Accept All: clears queue so next scan always fresh
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -198,7 +172,7 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 5) Reject All: clear all highlights at once
+// 5) Reject All: clears queue so next scan always fresh
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
