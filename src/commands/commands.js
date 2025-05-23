@@ -1,8 +1,6 @@
 /* global document, Office */
 import {
   checkDocumentText,
-  acceptCurrentChange,
-  rejectCurrentChange,
   acceptAllChanges,
   rejectAllChanges
 } from "./preposition.js";
@@ -22,15 +20,22 @@ Office.onReady(info => {
       } catch (e) {
         console.error(`${fn.name} threw:`, e);
       } finally {
-        event.completed();    // ← ALWAYS tell Word you’re done
+        event.completed();    // tell Word we’re done
       }
     };
 
-    Office.actions.associate("checkDocumentText",   makeHandler(checkDocumentText));
-    Office.actions.associate("acceptCurrentChange", makeHandler(acceptCurrentChange));
-    Office.actions.associate("rejectCurrentChange", makeHandler(rejectCurrentChange));
-    Office.actions.associate("acceptAllChanges",    makeHandler(acceptAllChanges));
-    Office.actions.associate("rejectAllChanges",    makeHandler(rejectAllChanges));
+    Office.actions.associate(
+      "checkDocumentText",
+      makeHandler(checkDocumentText)
+    );
+    Office.actions.associate(
+      "acceptAllChanges",
+      makeHandler(acceptAllChanges)
+    );
+    Office.actions.associate(
+      "rejectAllChanges",
+      makeHandler(rejectAllChanges)
+    );
 
     console.log("✅ Actions associated");
   }
