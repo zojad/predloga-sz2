@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<OfficeApp 
-  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" 
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" 
-  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" 
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
 
   <!-- IDs & metadata -->
@@ -14,7 +14,7 @@
   <DisplayName DefaultValue="Predloga S/Z"/>
   <Description DefaultValue="Check proper use of Slovene prepositions 's' and 'z'."/>
 
-  <!-- icons live at the site root under /assets -->
+  <!-- icons -->
   <IconUrl DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-64.png"/>
 
@@ -28,7 +28,6 @@
     <Host Name="Document"/>
   </Hosts>
 
-  <!-- taskpane.html is at the site root -->
   <DefaultSettings>
     <SourceLocation DefaultValue="https://zojad.github.io/predloga-sz2/taskpane.html"/>
   </DefaultSettings>
@@ -36,7 +35,7 @@
   <Permissions>ReadWriteDocument</Permissions>
 
   <VersionOverrides 
-    xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" 
+    xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
     xsi:type="VersionOverridesV1_0">
 
     <!-- require WordApi 1.3+ and NotificationMessages 1.1+ -->
@@ -51,7 +50,7 @@
       <Host xsi:type="Document">
         <DesktopFormFactor>
 
-          <!-- this runs your commands.js in a hidden iframe -->
+          <!-- your commands.js -->
           <FunctionFile resid="Commands.Url"/>
 
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
@@ -78,40 +77,6 @@
                   </Icon>
                   <Action xsi:type="ExecuteFunction">
                     <FunctionName>checkDocumentText</FunctionName>
-                  </Action>
-                </Control>
-
-                <!-- Accept One -->
-                <Control xsi:type="Button" id="AcceptOne">
-                  <Label resid="AcceptOne.Label"/>
-                  <Supertip>
-                    <Title resid="AcceptOne.Label"/>
-                    <Description resid="TaskpaneButton.Tooltip"/>
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
-                  </Icon>
-                  <Action xsi:type="ExecuteFunction">
-                    <FunctionName>acceptCurrentChange</FunctionName>
-                  </Action>
-                </Control>
-
-                <!-- Reject One -->
-                <Control xsi:type="Button" id="RejectOne">
-                  <Label resid="RejectOne.Label"/>
-                  <Supertip>
-                    <Title resid="RejectOne.Label"/>
-                    <Description resid="TaskpaneButton.Tooltip"/>
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
-                  </Icon>
-                  <Action xsi:type="ExecuteFunction">
-                    <FunctionName>rejectCurrentChange</FunctionName>
                   </Action>
                 </Control>
 
@@ -164,21 +129,19 @@
         <bt:Image id="Icon.80x80" DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Commands.Url"    DefaultValue="https://zojad.github.io/predloga-sz2/commands.html"/>
-        <bt:Url id="Taskpane.Url"    DefaultValue="https://zojad.github.io/predloga-sz2/taskpane.html"/>
-        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://go.microsoft.com/fwlink/?LinkId=276812"/>
+        <bt:Url id="Commands.Url" DefaultValue="https://zojad.github.io/predloga-sz2/commands.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://zojad.github.io/predloga-sz2/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="CommandsGroup.Label"     DefaultValue="Preposition Checker"/>
-        <bt:String id="CheckTextButton.Label"   DefaultValue="Check S/Z"/>
-        <bt:String id="AcceptOne.Label"         DefaultValue="Accept One"/>
-        <bt:String id="RejectOne.Label"         DefaultValue="Reject One"/>
-        <bt:String id="AcceptAll.Label"         DefaultValue="Accept All"/>
-        <bt:String id="RejectAll.Label"         DefaultValue="Reject All"/>
+        <bt:String id="CommandsGroup.Label" DefaultValue="Preposition Checker"/>
+        <bt:String id="CheckTextButton.Label" DefaultValue="Check S/Z"/>
+        <bt:String id="AcceptAll.Label" DefaultValue="Accept All"/>
+        <bt:String id="RejectAll.Label" DefaultValue="Reject All"/>
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Check use of Slovene 's' and 'z' prepositions."/>
       </bt:LongStrings>
     </Resources>
+
   </VersionOverrides>
 </OfficeApp>
