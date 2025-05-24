@@ -8,17 +8,17 @@
 
   <!-- IDs & metadata -->
   <Id>1495a86f-7d58-428b-b75f-022f5df7f795</Id>
-  <Version>1.0.0.16</Version>
-  <ProviderName>zojad</ProviderName>
-  <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Predloga S/Z"/>
-  <Description DefaultValue="Check proper use of Slovene prepositions 's' and 'z'."/>
+  <Version>1.0.0.1</Version>
+  <ProviderName>Zoja Dominco</ProviderName>
+  <DefaultLocale>en-SI</DefaultLocale>
+  <DisplayName DefaultValue="Word dodatek"/>
+  <Description DefaultValue="Preverite ustrezno rabo predlogov s, z, k in h."/>
 
-  <!-- icons -->
+  <!-- Fallback icons (used e.g. in add-in catalog) -->
   <IconUrl DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-64.png"/>
 
-  <SupportUrl DefaultValue="mailto:zojadominco@gmail.com"/>
+  <SupportUrl DefaultValue="mailto:predlogasz@gmail.com"/>
 
   <AppDomains>
     <AppDomain>https://zojad.github.io</AppDomain>
@@ -38,7 +38,6 @@
     xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
     xsi:type="VersionOverridesV1_0">
 
-    <!-- require WordApi 1.3+ and NotificationMessages 1.1+ -->
     <Requirements>
       <bt:Sets DefaultMinVersion="1.3">
         <bt:Set Name="WordApi" MinVersion="1.3"/>
@@ -50,7 +49,7 @@
       <Host xsi:type="Document">
         <DesktopFormFactor>
 
-          <!-- your commands.js -->
+          <!-- your commands.js running in hidden iframe -->
           <FunctionFile resid="Commands.Url"/>
 
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
@@ -58,12 +57,13 @@
               <Group id="CommandsGroup">
                 <Label resid="CommandsGroup.Label"/>
                 <Icon>
-                  <bt:Image size="16" resid="Icon.16x16"/>
-                  <bt:Image size="32" resid="Icon.32x32"/>
-                  <bt:Image size="80" resid="Icon.80x80"/>
+                  <!-- Group icon can be a generic one -->
+                  <bt:Image size="16" resid="GroupIcon.16x16"/>
+                  <bt:Image size="32" resid="GroupIcon.32x32"/>
+                  <bt:Image size="80" resid="GroupIcon.80x80"/>
                 </Icon>
 
-                <!-- Check S/Z -->
+                <!-- Check S/Z/K/H -->
                 <Control xsi:type="Button" id="CheckTextButton">
                   <Label resid="CheckTextButton.Label"/>
                   <Supertip>
@@ -71,9 +71,9 @@
                     <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
+                    <bt:Image size="16" resid="CheckIcon.16x16"/>
+                    <bt:Image size="32" resid="CheckIcon.32x32"/>
+                    <bt:Image size="80" resid="CheckIcon.80x80"/>
                   </Icon>
                   <Action xsi:type="ExecuteFunction">
                     <FunctionName>checkDocumentText</FunctionName>
@@ -88,9 +88,9 @@
                     <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
+                    <bt:Image size="16" resid="AcceptAllIcon.16x16"/>
+                    <bt:Image size="32" resid="AcceptAllIcon.32x32"/>
+                    <bt:Image size="80" resid="AcceptAllIcon.80x80"/>
                   </Icon>
                   <Action xsi:type="ExecuteFunction">
                     <FunctionName>acceptAllChanges</FunctionName>
@@ -105,9 +105,9 @@
                     <Description resid="TaskpaneButton.Tooltip"/>
                   </Supertip>
                   <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
+                    <bt:Image size="16" resid="RejectAllIcon.16x16"/>
+                    <bt:Image size="32" resid="RejectAllIcon.32x32"/>
+                    <bt:Image size="80" resid="RejectAllIcon.80x80"/>
                   </Icon>
                   <Action xsi:type="ExecuteFunction">
                     <FunctionName>rejectAllChanges</FunctionName>
@@ -124,22 +124,41 @@
 
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-16.png"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-32.png"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-80.png"/>
+        <!-- group icon (optional) -->
+        <bt:Image id="GroupIcon.16x16"  DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-16x16.png"/>
+        <bt:Image id="GroupIcon.32x32"  DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-32x32.png"/>
+        <bt:Image id="GroupIcon.80x80"  DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-80x80.png"/>
+
+        <!-- check button icons -->
+        <bt:Image id="CheckIcon.16x16"  DefaultValue="https://zojad.github.io/predloga-sz2/assets/check-16x16.png"/>
+        <bt:Image id="CheckIcon.32x32"  DefaultValue="https://zojad.github.io/predloga-sz2/assets/check-32x32.png"/>
+        <bt:Image id="CheckIcon.80x80"  DefaultValue="https://zojad.github.io/predloga-sz2/assets/check-80x80.png"/>
+
+        <!-- accept-all button icons -->
+        <bt:Image id="AcceptAllIcon.16x16" DefaultValue="https://zojad.github.io/predloga-sz2/assets/acceptall-16x16.png"/>
+        <bt:Image id="AcceptAllIcon.32x32" DefaultValue="https://zojad.github.io/predloga-sz2/assets/acceptall-32x32.png"/>
+        <bt:Image id="AcceptAllIcon.80x80" DefaultValue="https://zojad.github.io/predloga-sz2/assets/acceptall-80x80.png"/>
+
+        <!-- reject-all button icons -->
+        <bt:Image id="RejectAllIcon.16x16" DefaultValue="https://zojad.github.io/predloga-sz2/assets/rejectall-16x16.png"/>
+        <bt:Image id="RejectAllIcon.32x32" DefaultValue="https://zojad.github.io/predloga-sz2/assets/rejectall-32x32.png"/>
+        <bt:Image id="RejectAllIcon.80x80" DefaultValue="https://zojad.github.io/predloga-sz2/assets/rejectall-80x80.png"/>
       </bt:Images>
+
       <bt:Urls>
         <bt:Url id="Commands.Url" DefaultValue="https://zojad.github.io/predloga-sz2/commands.html"/>
         <bt:Url id="Taskpane.Url" DefaultValue="https://zojad.github.io/predloga-sz2/taskpane.html"/>
       </bt:Urls>
+
       <bt:ShortStrings>
-        <bt:String id="CommandsGroup.Label" DefaultValue="Preposition Checker"/>
-        <bt:String id="CheckTextButton.Label" DefaultValue="Check S/Z"/>
-        <bt:String id="AcceptAll.Label" DefaultValue="Accept All"/>
-        <bt:String id="RejectAll.Label" DefaultValue="Reject All"/>
+        <bt:String id="CommandsGroup.Label"         DefaultValue="Pregledovalnik predlogov"/>
+        <bt:String id="CheckTextButton.Label"       DefaultValue="Preveri predloge"/>
+        <bt:String id="AcceptAll.Label"             DefaultValue="Sprejmi vse"/>
+        <bt:String id="RejectAll.Label"             DefaultValue="Zavrni vse"/>
       </bt:ShortStrings>
+
       <bt:LongStrings>
-        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Check use of Slovene 's' and 'z' prepositions."/>
+        <bt:String id="TaskpaneButton.Tooltip"      DefaultValue="Preverite rabo predlogov s, z, k in h."/>
       </bt:LongStrings>
     </Resources>
 

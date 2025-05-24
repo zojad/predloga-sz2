@@ -2,12 +2,11 @@ const path              = require("path");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
-// this must match your GitHub‐Pages URL for the /docs folder
+// must match your GH-Pages URL for docs/
 const urlProd = "https://zojad.github.io/predloga-sz2/";
 
 module.exports = (env, options) => {
   const dev = options.mode === "development";
-
   return {
     mode: dev ? "development" : "production",
     devtool: dev ? "inline-source-map" : "source-map",
@@ -20,14 +19,11 @@ module.exports = (env, options) => {
     output: {
       path: path.resolve(__dirname, "docs"),
       filename: "[name].js",
-      // ← this is the key change
       publicPath: urlProd,
       clean: true,
     },
 
-    resolve: {
-      extensions: [".js"],
-    },
+    resolve: { extensions: [".js"] },
 
     module: {
       rules: [
@@ -40,16 +36,13 @@ module.exports = (env, options) => {
     },
 
     plugins: [
-      // Taskpane page
+      // your existing two HtmlWebpackPlugin instances…
       new HtmlWebpackPlugin({
         filename: "taskpane.html",
         template: "./src/taskpane/taskpane.html",
         chunks: ["taskpane"],
-        // ensure the injected <script> tags use absolute paths
         publicPath: urlProd,
       }),
-
-      // Commands (hidden iframe)
       new HtmlWebpackPlugin({
         filename: "commands.html",
         template: "./src/commands/commands.html",
@@ -57,7 +50,7 @@ module.exports = (env, options) => {
         publicPath: urlProd,
       }),
 
-      // copy over your static assets and rewrite localhost → GH-Pages
+      // copy assets + CSS + manifest + extra HTML
       new CopyWebpackPlugin({
         patterns: [
           { from: "assets", to: "assets" },
@@ -67,14 +60,17 @@ module.exports = (env, options) => {
             transform(content) {
               return content
                 .toString()
-                // replace your dev host with the prod root
                 .replace(/https:\/\/localhost:3006\//g, urlProd);
             },
           },
           { from: "src/taskpane/taskpane.css", to: "taskpane.css" },
+
+          // ← NEW: copy your static support pages unchanged
+          { from: "src/taskpane/privacy.html", to: "privacy.html" },
+          { from: "src/taskpane/support.html", to: "support.html" },
+          { from: "src/taskpane/index.html", to: "index.html" },
         ],
       }),
     ],
   };
 };
-

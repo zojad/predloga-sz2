@@ -17,61 +17,91 @@ function showNotification(id, opts) {
   }
 }
 
-// ─────────────────────────────────────────────────
-// Decide “s” vs “z” based on the next word’s first letter
-// ─────────────────────────────────────────────────
-function determineCorrectPreposition(rawWord) {
-  if (!rawWord) return null;
-  const m = rawWord.normalize("NFC").match(/[\p{L}0-9]/u);
+/**
+ * Decide correct preposition for S/Z and K/H.
+ * @param {string} nextWord    — the text of the following word
+ * @param {string} prepLower   — the candidate preposition, already lowercased ("s","z","k" or "h")
+ * @returns {"s"|"z"|"k"|"h"|null}
+ */
+function determineCorrectPreposition(nextWord, prepLower) {
+  if (!nextWord) return null;
+
+  // grab first letter or digit of nextWord
+  const m = nextWord.normalize("NFC").match(/[\p{L}0-9]/u);
   if (!m) return null;
-  const c = m[0].toLowerCase();
-  const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
-  const digitMap = {
-    '1':'e','2':'d','3':'t','4':'š','5':'p',
-    '6':'š','7':'s','8':'o','9':'d','0':'n'
-  };
-  const key = /\d/.test(c) ? digitMap[c] : c;
-  return unvoiced.has(key) ? "s" : "z";
+  const first = m[0].toLowerCase();
+
+  // S/Z logic: unvoiced ⇒ "s", otherwise "z"
+  if (prepLower === "s" || prepLower === "z") {
+    const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
+    const digitMap = {
+      '1':'e','2':'d','3':'t','4':'š','5':'p',
+      '6':'š','7':'s','8':'o','9':'d','0':'n'
+    };
+    const key = /\d/.test(first) ? digitMap[first] : first;
+    return unvoiced.has(key) ? "s" : "z";
+  }
+
+  // K/H logic: before k or g ⇒ "h", otherwise "k"
+  if (prepLower === "k" || prepLower === "h") {
+    return (first === "k" || first === "g") ? "h" : "k";
+  }
+
+  return null;
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z: highlight all mismatches, select first
+// 1) Check S/Z/K/H: highlight all mismatches, select first
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
   clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async context => {
-      // clear *only* your pink highlights (in case you run twice)
-      // NOTE: if you previously used only batch accept/reject, you can skip this.
+      // clear *all* highlights (so we can re-scan cleanly)
       context.document.body.font.highlightColor = null;
       await context.sync();
 
-      // search for standalone "s" & "z"
+      // search for standalone "s","z","k","h"
       const opts = { matchWholeWord: true, matchCase: false };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
+      const kRes = context.document.body.search("k", opts);
+      const hRes = context.document.body.search("h", opts);
       sRes.load("items"); zRes.load("items");
+      kRes.load("items"); hRes.load("items");
       await context.sync();
 
       const mismatches = [];
 
-      for (const r of [...sRes.items, ...zRes.items]) {
+      // flatten all four result sets
+      for (const r of [
+        ...sRes.items,
+        ...zRes.items,
+        ...kRes.items,
+        ...hRes.items
+      ]) {
         const raw = r.text.trim();
-        if (!/^[sSzZ]$/.test(raw)) continue;
+        const lower = raw.toLowerCase();
+        if (!["s","z","k","h"].includes(lower)) continue;
 
-        // look at next word
-        const after = r.getRange("After")
-                       .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+        // get the next word
+        const after = r
+          .getRange("After")
+          .getNextTextRange(
+            [" ", "\n", ".", ",", ";", "?", "!"],
+            true
+          );
         after.load("text");
         await context.sync();
         const nxt = after.text.trim();
         if (!nxt) continue;
 
-        const expectedLower = determineCorrectPreposition(nxt);
-        if (!expectedLower || expectedLower === raw.toLowerCase()) continue;
+        // decide what it should be
+        const expected = determineCorrectPreposition(nxt, lower);
+        if (!expected || expected === lower) continue;
 
-        // highlight it pink
+        // highlight and queue
         context.trackedObjects.add(r);
         r.font.highlightColor = HIGHLIGHT_COLOR;
         mismatches.push(r);
@@ -86,7 +116,7 @@ export async function checkDocumentText() {
           icon: "Icon.80x80"
         });
       } else {
-        // select the first mismatch
+        // select the first one
         const first = mismatches[0];
         context.trackedObjects.add(first);
         first.select();
@@ -113,30 +143,44 @@ export async function acceptAllChanges() {
       const opts = { matchWholeWord: true, matchCase: false };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
+      const kRes = context.document.body.search("k", opts);
+      const hRes = context.document.body.search("h", opts);
       sRes.load("items"); zRes.load("items");
+      kRes.load("items"); hRes.load("items");
       await context.sync();
 
-      for (const r of [...sRes.items, ...zRes.items]) {
+      for (const r of [
+        ...sRes.items,
+        ...zRes.items,
+        ...kRes.items,
+        ...hRes.items
+      ]) {
         const raw = r.text.trim();
-        if (!/^[sSzZ]$/.test(raw)) continue;
+        const lower = raw.toLowerCase();
+        if (!["s","z","k","h"].includes(lower)) continue;
 
         // peek at next word
-        const after = r.getRange("After")
-                       .getNextTextRange([" ", "\n", ".", ",", ";", "?", "!"], true);
+        const after = r
+          .getRange("After")
+          .getNextTextRange(
+            [" ", "\n", ".", ",", ";", "?", "!"],
+            true
+          );
         after.load("text");
         await context.sync();
         const nxt = after.text.trim();
         if (!nxt) continue;
 
-        const expectedLower = determineCorrectPreposition(nxt);
-        if (!expectedLower || expectedLower === raw.toLowerCase()) continue;
+        // get expected
+        const expected = determineCorrectPreposition(nxt, lower);
+        if (!expected || expected === lower) continue;
 
-        const suggestion = raw === raw.toUpperCase()
-          ? expectedLower.toUpperCase()
-          : expectedLower;
+        // preserve uppercase if needed
+        const replacement =
+          raw === raw.toUpperCase() ? expected.toUpperCase() : expected;
 
         context.trackedObjects.add(r);
-        r.insertText(suggestion, Word.InsertLocation.replace);
+        r.insertText(replacement, Word.InsertLocation.replace);
         r.font.highlightColor = null;
       }
 
@@ -168,14 +212,22 @@ export async function rejectAllChanges() {
       const opts = { matchWholeWord: true, matchCase: false };
       const sRes = context.document.body.search("s", opts);
       const zRes = context.document.body.search("z", opts);
+      const kRes = context.document.body.search("k", opts);
+      const hRes = context.document.body.search("h", opts);
       sRes.load("items"); zRes.load("items");
+      kRes.load("items"); hRes.load("items");
       await context.sync();
 
-      for (const r of [...sRes.items, ...zRes.items]) {
-        if (/^[sSzZ]$/.test(r.text.trim())) {
-          context.trackedObjects.add(r);
-          r.font.highlightColor = null;
-        }
+      for (const r of [
+        ...sRes.items,
+        ...zRes.items,
+        ...kRes.items,
+        ...hRes.items
+      ]) {
+        const raw = r.text.trim();
+        if (!/^[sSzZkKhH]$/.test(raw)) continue;
+        context.trackedObjects.add(r);
+        r.font.highlightColor = null;
       }
 
       await context.sync();
