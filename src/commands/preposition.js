@@ -20,7 +20,7 @@ function showNotification(id, opts) {
 /**
  * Decide correct preposition for S/Z and K/H.
  * @param {string} nextWord    — the text of the following word
- * @param {string} prepLower   — the candidate preposition, already lowercased ("s","z","k" or "h")
+ * @param {string} prepLower   — the candidate preposition, already lowercased
  * @returns {"s"|"z"|"k"|"h"|null}
  */
 function determineCorrectPreposition(nextWord, prepLower) {
@@ -47,49 +47,52 @@ function determineCorrectPreposition(nextWord, prepLower) {
 }
 
 // ─────────────────────────────────────────────────
-// Utility: build list of body, headers, and footers
+// Build a list of Ranges: body + any real headers/footers
 // ─────────────────────────────────────────────────
 async function collectScanRanges(context) {
   const ranges = [ context.document.body ];
 
-  const sections = context.document.sections;
-  sections.load("items");
-  await context.sync();
+  // if the sections API exists, attempt to pull in primary header/footer bodies
+  if (context.document.sections && context.document.sections.load) {
+    const sections = context.document.sections;
+    sections.load("items");
+    await context.sync();
 
-  for (const section of sections.items) {
-    // note the .body on each header/footer
-    ranges.push(section.getHeader("primary").body);
-    ranges.push(section.getFooter("primary").body);
+    for (const section of sections.items) {
+      // wrap in try/catch in case this host doesn't support headers
+      try {
+        const hdr = section.getHeader("primary");
+        if (hdr && hdr.body) ranges.push(hdr.body);
+      } catch { /* no header here */ }
+
+      try {
+        const ftr = section.getFooter("primary");
+        if (ftr && ftr.body) ranges.push(ftr.body);
+      } catch { /* no footer here */ }
+    }
   }
 
   return ranges;
 }
 
 // ─────────────────────────────────────────────────
-// 1) Check S/Z/K/H: highlight all mismatches, select first
+// 1) Check: clear highlights, scan all ranges, highlight mismatches
 // ─────────────────────────────────────────────────
 export async function checkDocumentText() {
   clearNotification(NOTIF_ID);
 
   try {
     await Word.run(async context => {
-      // clear highlights in body
-      context.document.body.font.highlightColor = null;
+      const opts = { matchWholeWord: true, matchCase: false };
+      const scanRanges = await collectScanRanges(context);
 
-      // clear highlights in headers/footers bodies
-      const sections = context.document.sections;
-      sections.load("items");
-      await context.sync();
-      for (const sec of sections.items) {
-        sec.getHeader("primary").body.font.highlightColor = null;
-        sec.getFooter("primary").body.font.highlightColor = null;
+      // clear any prior highlights in *every* range
+      for (const rng of scanRanges) {
+        rng.font.highlightColor = null;
       }
       await context.sync();
 
-      const opts = { matchWholeWord: true, matchCase: false };
-      const scanRanges = await collectScanRanges(context);
       const mismatches = [];
-
       for (const rng of scanRanges) {
         const sRes = rng.search("s", opts);
         const zRes = rng.search("z", opts);
@@ -147,7 +150,7 @@ export async function checkDocumentText() {
 }
 
 // ─────────────────────────────────────────────────
-// 2) Accept All: replace every mismatch in one batch
+// 2) Accept All: replace and clear each mismatch
 // ─────────────────────────────────────────────────
 export async function acceptAllChanges() {
   clearNotification(NOTIF_ID);
@@ -211,7 +214,7 @@ export async function acceptAllChanges() {
 }
 
 // ─────────────────────────────────────────────────
-// 3) Reject All: clear every pink mismatch
+// 3) Reject All: just clear existing highlights
 // ─────────────────────────────────────────────────
 export async function rejectAllChanges() {
   clearNotification(NOTIF_ID);
