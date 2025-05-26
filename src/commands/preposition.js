@@ -26,33 +26,23 @@ function showNotification(id, opts) {
 function determineCorrectPreposition(nextWord, prepLower) {
   if (!nextWord) return null;
 
-  // normalize and trim
   const nw = nextWord.normalize("NFC").trim();
   if (!nw) return null;
 
-  // grab the very first character
   let ch = nw[0];
-
-  // if digit, map to letter; else lowercase letter
   const digitMap = {
     '1':'e','2':'d','3':'t','4':'š','5':'p',
     '6':'š','7':'s','8':'o','9':'d','0':'n'
   };
-  const key = (ch >= '0' && ch <= '9')
-    ? digitMap[ch]
-    : ch.toLowerCase();
+  const key = (ch >= '0' && ch <= '9') ? digitMap[ch] : ch.toLowerCase();
 
-  // S/Z logic: unvoiced ⇒ "s", otherwise "z"
   if (prepLower === "s" || prepLower === "z") {
     const unvoiced = new Set(['c','č','f','h','k','p','s','š','t']);
     return unvoiced.has(key) ? "s" : "z";
   }
-
-  // K/H logic: before k or g ⇒ "h", otherwise "k"
   if (prepLower === "k" || prepLower === "h") {
     return (key === "k" || key === "g") ? "h" : "k";
   }
-
   return null;
 }
 
@@ -60,19 +50,16 @@ function determineCorrectPreposition(nextWord, prepLower) {
 // Utility: build list of body, headers, and footers
 // ─────────────────────────────────────────────────
 async function collectScanRanges(context) {
-  const ranges = [];
+  const ranges = [ context.document.body ];
 
-  // include document body
-  ranges.push(context.document.body);
-
-  // include each section’s primary header & footer
   const sections = context.document.sections;
   sections.load("items");
   await context.sync();
 
   for (const section of sections.items) {
-    ranges.push(section.getHeader("primary"));
-    ranges.push(section.getFooter("primary"));
+    // note the .body on each header/footer
+    ranges.push(section.getHeader("primary").body);
+    ranges.push(section.getFooter("primary").body);
   }
 
   return ranges;
@@ -86,14 +73,16 @@ export async function checkDocumentText() {
 
   try {
     await Word.run(async context => {
-      // clear all existing highlights
+      // clear highlights in body
       context.document.body.font.highlightColor = null;
+
+      // clear highlights in headers/footers bodies
       const sections = context.document.sections;
       sections.load("items");
       await context.sync();
       for (const sec of sections.items) {
-        sec.getHeader("primary").font.highlightColor = null;
-        sec.getFooter("primary").font.highlightColor = null;
+        sec.getHeader("primary").body.font.highlightColor = null;
+        sec.getFooter("primary").body.font.highlightColor = null;
       }
       await context.sync();
 
@@ -111,7 +100,7 @@ export async function checkDocumentText() {
         await context.sync();
 
         for (const r of [...sRes.items, ...zRes.items, ...kRes.items, ...hRes.items]) {
-          const raw   = r.text.trim();
+          const raw = r.text.trim();
           const lower = raw.toLowerCase();
           if (!["s","z","k","h"].includes(lower)) continue;
 
@@ -178,7 +167,7 @@ export async function acceptAllChanges() {
         await context.sync();
 
         for (const r of [...sRes.items, ...zRes.items, ...kRes.items, ...hRes.items]) {
-          const raw   = r.text.trim();
+          const raw = r.text.trim();
           const lower = raw.toLowerCase();
           if (!["s","z","k","h"].includes(lower)) continue;
 
@@ -194,10 +183,9 @@ export async function acceptAllChanges() {
           const expected = determineCorrectPreposition(nxt, lower);
           if (!expected || expected === lower) continue;
 
-          const replacement =
-            raw === raw.toUpperCase()
-              ? expected.toUpperCase()
-              : expected;
+          const replacement = raw === raw.toUpperCase()
+            ? expected.toUpperCase()
+            : expected;
 
           context.trackedObjects.add(r);
           r.insertText(replacement, Word.InsertLocation.replace);
