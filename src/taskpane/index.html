@@ -1,36 +1,148 @@
 <!DOCTYPE html>
-<html lang="sl">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Predloga S/Z</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preposition Checker – Getting Started</title>
   <style>
-    body { font-family: sans-serif; max-width: 700px; margin: 2em auto; line-height: 1.5; }
-    header, footer { text-align: center; margin-bottom: 2em; }
-    nav a { margin: 0 0.5em; text-decoration: none; color: #005a9e; }
-    nav a:hover { text-decoration: underline; }
-    main h2 { margin-top: 1.5em; }
+    /* Reset & base */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      line-height: 1.6;
+      background: #f4f6f8;
+      color: #333;
+      padding-top: 80px; /* space for sticky header */
+    }
+
+    /* Sticky header with gradient */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: linear-gradient(90deg, #005a9e, #0078d4);
+      color: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      z-index: 100;
+    }
+    header .container {
+      max-width: 1200px;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2rem;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    nav ul {
+      display: flex;
+      list-style: none;
+      gap: 1.5rem;
+    }
+    nav a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: 500;
+      text-transform: uppercase;
+      font-size: 0.9rem;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+
+    /* Main content full-width */
+    main {
+      width: 100%;
+      padding: 2rem;
+    }
+    
+    h2 {
+      font-size: 1.4rem;
+      color: #0078d4;
+      border-bottom: 3px solid #0078d4;
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    ol {
+      margin-left: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    ol li {
+      margin-bottom: 1rem;
+    }
+    ul {
+      margin-top: 0.5rem;
+      margin-left: 1.5rem;
+    }
+
+    /* Footer */
+    footer {
+      background: #e1e1e1;
+      color: #555;
+      text-align: center;
+      padding: 2rem 1rem;
+      margin-top: 2rem;
+    }
+    footer a {
+      color: #0078d4;
+      text-decoration: none;
+      margin: 0 0.5rem;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Dodatek za pregledovanje predlogov</h1>
 
+  <header>
+    <div class="container">
+      <h1>Preposition Checker Add-in</h1>
+      <nav>
+        <ul>
+          <li><a href="#getting-started">Getting Started</a></li>
+          <li><a href="privacypolicy.html">Privacy</a></li>
+          <li><a href="support.html">Support</a></li>
+          <li><a href="termsofuse.html">Terms</a></li>
+          <li><a href="license.html">License</a></li>
+        </ul>
+      </nav>
+    </div>
   </header>
 
   <main>
-    <p>Orodje za preverjanje in spreminjanje slovenske rabe predlogov <strong>s</strong>, <strong>z</strong>, <strong>h</strong> in <strong>k</strong> v Word dokumentih.</p>
+    <section id="getting-started">
+      <h2>Getting Started</h2>
+      <ol>
+        <li>
+          <strong>Install from the Office Store</strong>
+          <ul>
+            <li><em>Word on the web:</em> Click <strong>Add-ins</strong>, search for <em>Pregledovalnik predlogov</em>, then click <strong>Add</strong>.</li>
+            <li><em>Word desktop:</em> Go to the <strong>Home</strong> tab and click <strong>Add-ins → Get Add-ins</strong>, search for <em>Pregledovalnik predlogov</em>, then click <strong>Add</strong>.</li>
+          </ul>
+        </li>
+        <li>
+          <strong>Use the add-in</strong>
+          <ul>
+            <li>In the task pane, click <strong>Check Prepositions</strong> to highlight any incorrect <strong>s, z, h</strong> or <strong>k</strong> prepositions in the body, headers, and footers.</li>
+            <li>Click <strong>Accept All</strong> to apply corrections or <strong>Reject All</strong> to clear the highlights.</li>
+          </ul>
+        </li>
+      </ol>
+    </section>
 
-    <h2>Kako začeti:</h2>
-    <ol>
-      <li>Namestite dodatek s strani Office Store ali s stranskim nalaganjem manifestne datoteke.</li>
-      <li>V Wordu odprite dokument in na zavihku <em>Osnovno</em> kliknite »Preveri predloge«.</li>
-      <li>Uporabite gumba »Sprejmi vse« ali »Zavrni vse« za sprejem ali zavrnitev popravljenih predlogov.</li>
-    </ol>
   </main>
 
   <footer>
-    <small>© 2025 Zoja Dominco | <a href="privacy.html">Pravilnik o zasebnosti</a> | <a href="support.html">Podpora</a> | <a href="https://github.com/zojad/predloga-sz2">GitHub repozitorij</a></small>
+    &copy; 2025 University of Ljubljana |
+    <a href="privacypolicy.html">Privacy Policy</a> |
+    <a href="support.html">Support</a> |
+    <a href="termsofuse.html">Terms</a> |
+    <a href="license.html">License</a> |
+    <a href="https://github.com/zojad/predloga-sz2">GitHub Repository</a>
   </footer>
+
 </body>
 </html>

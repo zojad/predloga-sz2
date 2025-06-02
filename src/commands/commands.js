@@ -20,7 +20,7 @@ Office.onReady(info => {
       } catch (e) {
         console.error(`${fn.name} threw:`, e);
       } finally {
-        event.completed();    // tell Word we’re done
+        event.completed();    
       }
     };
 

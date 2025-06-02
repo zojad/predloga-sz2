@@ -1,19 +1,141 @@
 <!DOCTYPE html>
-<html lang="sl">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Word dodatek</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preposition Checker Add-in – Support</title>
   <style>
-    body { font-family: sans-serif; margin: 20px; line-height: 1.5; }
-    a { color: #005a9e; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    /* Reset & base */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      line-height: 1.6;
+      background: #f4f6f8;
+      color: #333;
+      padding-top: 80px; /* space for sticky header */
+    }
+
+    /* Sticky gradient header */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: linear-gradient(90deg, #005a9e, #0078d4);
+      color: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      z-index: 100;
+    }
+    header .container {
+      max-width: 1200px;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2rem;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    nav ul {
+      display: flex;
+      list-style: none;
+      gap: 1.5rem;
+    }
+    nav a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: 500;
+      text-transform: uppercase;
+      font-size: 0.9rem;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+
+    /* Main content full-width */
+    main {
+      width: 100%;
+      padding: 2rem;
+    }
+    section {
+      max-width: 800px;
+      margin: auto;
+    }
+    h2 {
+      font-size: 1.4rem;
+      color: #0078d4;
+      border-bottom: 3px solid #0078d4;
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    p {
+      margin-bottom: 1rem;
+    }
+    a {
+      color: #005a9e;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 2rem 0;
+    }
+
+    /* Footer */
+    footer {
+      background: #e1e1e1;
+      color: #555;
+      text-align: center;
+      padding: 2rem 1rem;
+      margin-top: 2rem;
+    }
+    footer a {
+      color: #0078d4;
+      text-decoration: none;
+      margin: 0 0.5rem;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
-  <h1>Podpora</h1>
-  <p>Če imate težave ali vprašanja glede Word dodatka, pišite na:</p>
-  <p><a href="mailto:predlogasz@gmail.com">predlogasz@gmail.com</a></p>
-  <p><a href="index.html">Nazaj na domačo stran</a></p>
+
+  <header>
+    <div class="container">
+      <h1>Preposition Checker Add-in</h1>
+      <nav>
+        <ul>
+          <li><a href="index.html">Getting Started</a></li>
+          <li><a href="privacypolicy.html">Privacy</a></li>
+          <li><a href="support.html">Support</a></li>
+          <li><a href="termsofuse.html">Terms</a></li>
+          <li><a href="license.html">License</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Support</h2>
+      <p>If you encounter any issues or have questions about the Word add-in, please contact us at:</p>
+      <p><a href="mailto:predlogasz@gmail.com">predlogasz@gmail.com</a></p>
+      
+    </section>
+  </main>
+
+  <footer>
+    &copy; 2025 University of Ljubljana |
+      <a href="termsofuse.html">Terms</a> |
+    <a href="license.html">License</a> |
+    <a href="privacypolicy.html">Privacy</a> |
+    <a href="support.html">Support</a> |
+    <a href="index.html">Home</a>
+  </footer>
+
 </body>
 </html>

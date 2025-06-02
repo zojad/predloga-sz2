@@ -6,19 +6,20 @@
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
 
-  <!-- IDs & metadata -->
-  <Id>1495a86f-7d58-428b-b75f-022f5df7f795</Id>
-  <Version>1.0.0.1</Version>
+  
+  <Id>f50716ae-c756-404f-aad6-0c1789859f30</Id>
+  <Version>1.0.0.0</Version>
   <ProviderName>Zoja Dominco</ProviderName>
-  <DefaultLocale>en-SI</DefaultLocale>
-  <DisplayName DefaultValue="Word dodatek"/>
+  <DefaultLocale>sl-SI</DefaultLocale>
+  <DisplayName DefaultValue="Pregledovalnik predlogov"/>
   <Description DefaultValue="Preverite ustrezno rabo predlogov s, z, k in h."/>
 
-  <!-- Fallback icons (used e.g. in add-in catalog) -->
+  
   <IconUrl DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://zojad.github.io/predloga-sz2/assets/icon-64.png"/>
 
-  <SupportUrl DefaultValue="mailto:predlogasz@gmail.com"/>
+  <SupportUrl DefaultValue="https://zojad.github.io/predloga-sz2/support.html" />
+
 
   <AppDomains>
     <AppDomain>https://zojad.github.io</AppDomain>
@@ -49,7 +50,7 @@
       <Host xsi:type="Document">
         <DesktopFormFactor>
 
-          <!-- your commands.js running in hidden iframe -->
+          
           <FunctionFile resid="Commands.Url"/>
 
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
@@ -57,7 +58,7 @@
               <Group id="CommandsGroup">
                 <Label resid="CommandsGroup.Label"/>
                 <Icon>
-                  <!-- Group icon can be a generic one -->
+                  
                   <bt:Image size="16" resid="GroupIcon.16x16"/>
                   <bt:Image size="32" resid="GroupIcon.32x32"/>
                   <bt:Image size="80" resid="GroupIcon.80x80"/>
